@@ -74,7 +74,15 @@
               <p class="aviso-imagen" id="n-logo-aviso" hidden></p>
             </div>
 
-            <div class="campo">
+            <fieldset class="campo">
+              <legend>Imagen de las estampas</legend>
+              <label class="casilla"><input type="radio" name="n-modo-estampas" value="misma" checked> La misma imagen para todas</label>
+              <label class="casilla"><input type="radio" name="n-modo-estampas" value="distintas"> Una imagen distinta por estampa</label>
+              <p class="aviso-imagen" id="n-modo-aviso" hidden>Al guardar se quitarán las imágenes que tiene cada estampa
+                y todas usarán la misma.</p>
+            </fieldset>
+
+            <div class="campo" id="n-campo-misma">
               <label for="n-sello">Imagen de la estampa <span class="opcional">(opcional; si no, se usa el logo)</span></label>
               <p class="ayuda">Cuadrada, de <strong>300 × 300 px</strong> o más, en <strong>PNG con fondo transparente</strong>,
                 con el dibujo llenando el cuadro. Se ve a color cuando el cliente la obtiene y en gris cuando le falta.</p>
@@ -86,9 +94,10 @@
               <p class="aviso-imagen" id="n-sello-aviso" hidden></p>
             </div>
 
-            <fieldset class="campo">
-              <legend>Una imagen distinta por estampa <span class="opcional">(opcional; las que no tengan usan la de arriba)</span></legend>
-              <p class="ayuda">Toque una casilla para elegir su imagen (por ejemplo, la última con la foto del premio). Se respeta la
+            <fieldset class="campo" id="n-campo-distintas" hidden>
+              <legend>Imagen de cada estampa</legend>
+              <p class="ayuda">Toque una casilla para elegir su imagen (por ejemplo, la última con la foto del premio). Las casillas
+                vacías usan la imagen de «La misma imagen para todas» o, si no hay, el logo. Se respeta la
                 forma de la imagen: en PNG con fondo transparente se ve solo el dibujo; una foto con fondo se ve como un cuadro.
                 En el teléfono cada estampa mide menos de 1 cm: use imágenes simples y de cerca.</p>
               <div class="estampas-propias" id="n-estampas"></div>

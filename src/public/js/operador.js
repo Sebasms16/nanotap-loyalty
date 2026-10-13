@@ -199,11 +199,41 @@
   let posicionElegida = 0;
   const totalEstampas = () => Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
 
+  // Posiciones con imagen propia guardada (1 = primera estampa).
+  const estampasGuardadas = () => (editando?.estampas_urls || []).flatMap((url, i) => (url ? [i + 1] : []));
+  const modoDistintas = () => document.querySelector('input[name="n-modo-estampas"]:checked').value === 'distintas';
+
   function reiniciarEstampas() {
     for (const { url } of estampasNuevas.values()) URL.revokeObjectURL(url);
     estampasNuevas.clear();
     estampasQuitadas.clear();
+    const modo = estampasGuardadas().length ? 'distintas' : 'misma';
+    document.querySelector(`input[name="n-modo-estampas"][value="${modo}"]`).checked = true;
+    mostrarModo();
     pintarEstampas();
+  }
+
+  // Muestra solo lo que corresponde al modo elegido. Volver a "la misma para todas"
+  // no borra nada hasta Guardar; si había imágenes por estampa, se avisa.
+  function mostrarModo() {
+    const distintas = modoDistintas();
+    $('#n-campo-misma').hidden = distintas;
+    $('#n-campo-distintas').hidden = !distintas;
+    $('#n-modo-aviso').hidden = distintas || !estampasGuardadas().length;
+  }
+  document.querySelectorAll('input[name="n-modo-estampas"]').forEach((opcion) => {
+    opcion.addEventListener('change', mostrarModo);
+  });
+
+  // Lo que hay que subir y quitar al guardar. Con "la misma para todas" se quitan
+  // todas las imágenes por estampa guardadas; si no, solo las posiciones visibles.
+  function cambiosEstampas() {
+    if (!modoDistintas()) return { nuevas: [], quitadas: estampasGuardadas() };
+    const total = totalEstampas();
+    return {
+      nuevas: [...estampasNuevas].filter(([posicion]) => posicion <= total),
+      quitadas: [...estampasQuitadas].filter((posicion) => posicion <= total),
+    };
   }
 
   // Imagen propia que tendrá la posición al guardar (null = usa la general).
@@ -255,14 +285,12 @@
   });
   $('#n-sellos').addEventListener('input', pintarEstampas);
 
-  // Sube o quita las imágenes por estampa (solo las posiciones que se ven en el formulario).
   async function guardarEstampas(negocio) {
-    const total = totalEstampas();
-    for (const [posicion, { archivo }] of estampasNuevas) {
-      if (posicion <= total) negocio = await subirArchivo(`/api/negocios/${negocio.id}/estampas/${posicion}`, archivo);
+    const { nuevas, quitadas } = cambiosEstampas();
+    for (const [posicion, { archivo }] of nuevas) {
+      negocio = await subirArchivo(`/api/negocios/${negocio.id}/estampas/${posicion}`, archivo);
     }
-    for (const posicion of estampasQuitadas) {
-      if (posicion > total) continue;
+    for (const posicion of quitadas) {
       negocio = (await llamar(`/api/negocios/${negocio.id}/estampas/${posicion}`, { metodo: 'DELETE' })).negocio;
     }
     return negocio;
@@ -386,9 +414,10 @@
   // Se le mandan solo los cambios sin guardar; lo demás lo toma del negocio guardado.
   async function pedirTira({ total, llenos, texto }) {
     const fondoSellos = $('#n-fondo-igual').checked ? $('#n-primario').value : $('#n-fondo-sellos').value;
+    const { nuevas, quitadas } = cambiosEstampas();
     const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]],
-      ...[...estampasNuevas].map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
-    const quitar = [...estampasQuitadas];
+      ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
+    const quitar = [...quitadas];
     if ($('#n-sello-quitar').checked) quitar.push('sello');
 
     const numero = ++pedidoTira;
