@@ -230,6 +230,19 @@ td .boton + .boton { margin-left: 0.35rem; }
 .ayuda { font-size: 0.85rem; color: var(--texto-suave); margin: 0 0 0.5rem; }
 .subida { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .subida .miniatura { margin: 0; }
+fieldset.campo { border: 0; padding: 0; margin: 0 0 1rem; display: grid; gap: 0.4rem; }
+fieldset.campo legend { font-weight: 600; font-size: 0.92rem; padding: 0; margin-bottom: 0.3rem; }
+fieldset.campo legend .opcional { font-weight: 400; color: var(--texto-suave); }
+fieldset.campo .ayuda { margin: 0; }
+.estampas-propias { display: grid; grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr)); gap: 0.6rem; }
+.estampa-propia { display: grid; justify-items: center; gap: 0.25rem; font-size: 0.8rem; color: var(--texto-suave); }
+.estampa-propia > button:first-child {
+  width: 4rem; height: 4rem; padding: 0.2rem; border: 1px dashed var(--borde); border-radius: 10px;
+  background: #fff; color: var(--texto-suave); font-size: 1.4rem; cursor: pointer;
+}
+.estampa-propia.con-imagen > button:first-child { border-style: solid; }
+.estampa-propia img { width: 100%; height: 100%; object-fit: contain; }
+.estampa-propia .quitar { border: 0; background: none; color: var(--texto-suave); font: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
 .aviso-imagen { font-size: 0.85rem; background: var(--aviso-fondo); color: #6b4e00; border-radius: 8px; padding: 0.5rem 0.7rem; margin: 0.5rem 0 0; }
 
 .vista-tarjeta { position: sticky; top: calc(4.5rem + env(safe-area-inset-top, 0px)); display: grid; gap: 0.75rem; }

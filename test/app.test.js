@@ -104,15 +104,38 @@ test('operador: login y validaciones de alta de negocio', async () => {
   assert.equal((await subir(token, 'x', 'text/plain')).status, 415);
   assert.equal((await subir(token, 'x', 'image/png', 'otro')).status, 404);
 
-  // Vista previa de estampas: con una imagen sin guardar devuelve el PNG dibujado.
+  // Imagen propia de una estampa: exige operador y una posición de 1 a 30.
+  const estampaEn = (tok, posicion, metodo = 'POST') => pedir(`/api/negocios/${id}/estampas/${posicion}`, {
+    method: metodo,
+    headers: { 'Content-Type': 'image/png', ...(tok ? { Authorization: `Bearer ${tok}` } : {}) },
+    body: metodo === 'POST' ? 'x' : undefined,
+  });
+  assert.equal((await estampaEn(null, 1)).status, 401);
+  assert.equal((await estampaEn(null, 1, 'DELETE')).status, 401);
+  assert.equal((await estampaEn(token, 31)).status, 400);
+  assert.equal((await estampaEn(token, 0, 'DELETE')).status, 400);
+  assert.equal((await estampaEn(token, 2)).status, 415);
+
+  const pendientesMalo = await pedir('/api/negocios', json({ nombre: 'Café', slug: 'cafe', estampas_pendientes: 'rojo' }, token));
+  assert.equal(pendientesMalo.status, 400);
+
+  // Vista previa de estampas: con imágenes sin guardar (seguidas en el cuerpo) devuelve el PNG dibujado.
   const sharp = require('sharp');
-  const estampa = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 200, g: 0, b: 0, alpha: 1 } } })
+  const cuadro = (r) => sharp({ create: { width: 300, height: 300, channels: 4, background: { r, g: 0, b: 0, alpha: 1 } } })
     .png().toBuffer();
-  const previa = await pedir('/api/operador/vista-previa/estampas?total=6&llenos=2&fondo=ffffff', {
-    method: 'POST', headers: { 'Content-Type': 'image/png', Authorization: `Bearer ${token}` }, body: estampa,
+  const [general, segunda] = await Promise.all([cuadro(200), cuadro(90)]);
+  const previa = await pedir(`/api/operador/vista-previa/estampas?total=6&llenos=2&fondo=ffffff&pendientes=ocultas`
+    + `&partes=sello:${general.length},2:${segunda.length}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+    body: Buffer.concat([general, segunda]),
   });
   assert.equal(previa.status, 200);
   assert.equal(previa.headers.get('content-type'), 'image/png');
+  const incompleta = await pedir(`/api/operador/vista-previa/estampas?partes=sello:${general.length + 1}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: general,
+  });
+  assert.equal(incompleta.status, 400);
   assert.equal((await pedir('/api/operador/vista-previa/estampas', { method: 'POST' })).status, 401);
   assert.equal((await pedir('/img/qr-ejemplo.png')).status, 200);
 

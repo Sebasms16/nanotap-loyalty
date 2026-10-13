@@ -171,10 +171,10 @@ test('RNF-10: reporta días para el vencimiento de los certificados', () => {
 
 test('estampas con logo: obtenidas a color y pendientes en gris', async () => {
   const sharp = require('sharp');
-  const { tiraConLogo } = require('../src/services/estampas.service');
+  const { tiraConImagenes } = require('../src/services/estampas.service');
   const logo = await sharp({ create: { width: 200, height: 200, channels: 4, background: { r: 220, g: 30, b: 30, alpha: 1 } } })
     .png().toBuffer();
-  const png = await tiraConLogo({ logo, total: 4, llenos: 2, fondo: '#ffffff', ancho: 750, alto: 246 });
+  const png = await tiraConImagenes({ imagenes: [logo, logo, logo, logo], total: 4, llenos: 2, fondo: '#ffffff', ancho: 750, alto: 246 });
   const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
   assert.equal(info.width, 750);
   assert.equal(info.height, 246);
@@ -217,6 +217,41 @@ test('sin logo, la zona de estampas usa los círculos de color', async () => {
   const marca = require('../src/services/marca.service');
   const png = await marca.tiraDelNegocio({ ...negocio, logo_url: null, sello_url: null }, 3);
   assert.equal(png.readUInt32BE(16), 750);
+});
+
+test('estampas: una imagen por posición y pendientes en gris u ocultas', async () => {
+  const sharp = require('sharp');
+  const marca = require('../src/services/marca.service');
+  const cuadro = (r, g, b) => sharp({ create: { width: 300, height: 300, channels: 4, background: { r, g, b, alpha: 1 } } })
+    .png().toBuffer();
+  const rojo = await cuadro(255, 0, 0);
+  const azul = await cuadro(0, 0, 255);
+  // Color en el centro de cada estampa: 4 estampas en una fila sobre 750 × 246.
+  const centros = async (png) => {
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    return [0, 1, 2, 3].map((i) => {
+      const x = Math.round(22.5 + 176.25 * (i + 0.5));
+      const p = (123 * info.width + x) * info.channels;
+      return [...data.subarray(p, p + 3)];
+    });
+  };
+  // Los Buffers hacen de URLs ya descargadas (como en la vista previa del panel).
+  const base = { ...negocio, sellos_para_premio: 4, color_fondo_sellos: '#000000', sello_url: rojo, estampas_urls: [null, azul] };
+
+  const [primera, segunda, tercera, cuarta] = await centros(await marca.tiraDelNegocio(base, 2));
+  assert.deepEqual(primera, [255, 0, 0]); // sin imagen propia: la general, a color
+  assert.deepEqual(segunda, [0, 0, 255]); // con imagen propia
+  assert.ok(tercera[0] > 0 && tercera[0] < 60 && tercera[0] === tercera[1]); // pendiente: gris tenue
+  assert.deepEqual(cuarta, tercera);
+
+  const ocultas = await centros(await marca.tiraDelNegocio({ ...base, estampas_pendientes: 'ocultas' }, 2));
+  assert.deepEqual(ocultas.slice(0, 2), [[255, 0, 0], [0, 0, 255]]);
+  assert.deepEqual(ocultas.slice(2), [[0, 0, 0], [0, 0, 0]]); // círculo vacío: se ve el fondo
+
+  // Cambiar las imágenes por estampa o el modo cambia la versión (Google descarga de nuevo).
+  const sinUrls = { ...negocio, estampas_urls: [] };
+  assert.notEqual(marca.versionTira({ ...sinUrls, estampas_urls: ['https://x/1.png'] }), marca.versionTira(sinUrls));
+  assert.notEqual(marca.versionTira({ ...sinUrls, estampas_pendientes: 'ocultas' }), marca.versionTira(sinUrls));
 });
 
 test('reglas del programa: sugeridas, propias y normalización al guardar', () => {

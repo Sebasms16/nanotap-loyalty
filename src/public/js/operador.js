@@ -143,6 +143,9 @@
     reglasAlAbrir = $('#n-reglas').value;
     $('#n-logo-aviso').hidden = true;
     $('#n-sello-aviso').hidden = true;
+    const pendientes = n?.estampas_pendientes === 'ocultas' ? 'ocultas' : 'gris';
+    document.querySelector(`input[name="n-pendientes"][value="${pendientes}"]`).checked = true;
+    reiniciarEstampas();
     $('#n-prev-llenos').value = 3;
     actualizarVistaPrevia();
     mensaje($('#error-negocio'), '');
@@ -176,8 +179,8 @@
   });
 
   // Sube el archivo tal cual; el servidor lo valida y lo convierte a PNG.
-  async function subirImagen(negocioId, tipo, archivo) {
-    const r = await fetch(`/api/negocios/${negocioId}/imagenes/${tipo}`, {
+  async function subirArchivo(ruta, archivo) {
+    const r = await fetch(ruta, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': archivo.type || 'application/octet-stream' },
       body: archivo,
@@ -186,6 +189,83 @@
     if (r.status === 401) salir();
     if (!r.ok) throw new Error(datos.error || 'No se pudo subir la imagen.');
     return datos.negocio;
+  }
+  const subirImagen = (negocioId, tipo, archivo) => subirArchivo(`/api/negocios/${negocioId}/imagenes/${tipo}`, archivo);
+
+  // --- Una imagen distinta por estampa -----------------------------------------
+  // Los cambios quedan aquí hasta Guardar, como el resto del formulario.
+  const estampasNuevas = new Map(); // posición → { archivo, url } elegido y sin guardar
+  const estampasQuitadas = new Set(); // posiciones con imagen guardada que se quitan al guardar
+  let posicionElegida = 0;
+  const totalEstampas = () => Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
+
+  function reiniciarEstampas() {
+    for (const { url } of estampasNuevas.values()) URL.revokeObjectURL(url);
+    estampasNuevas.clear();
+    estampasQuitadas.clear();
+    pintarEstampas();
+  }
+
+  // Imagen propia que tendrá la posición al guardar (null = usa la general).
+  function imagenDeEstampa(posicion) {
+    if (estampasNuevas.has(posicion)) return estampasNuevas.get(posicion).url;
+    if (estampasQuitadas.has(posicion)) return null;
+    return editando?.estampas_urls?.[posicion - 1] || null;
+  }
+
+  function pintarEstampas() {
+    const casillas = [];
+    for (let posicion = 1; posicion <= totalEstampas(); posicion++) {
+      const imagen = imagenDeEstampa(posicion);
+      casillas.push(el('div', { class: `estampa-propia${imagen ? ' con-imagen' : ''}` },
+        el('button', {
+          type: 'button',
+          'aria-label': `${imagen ? 'Cambiar' : 'Elegir'} la imagen de la estampa ${posicion}`,
+          onclick: () => { posicionElegida = posicion; $('#n-estampa-archivo').click(); },
+        }, imagen ? el('img', { src: imagen, alt: '' }) : '+'),
+        imagen
+          ? el('button', {
+            type: 'button', class: 'quitar', 'aria-label': `Quitar la imagen de la estampa ${posicion}`,
+            onclick: () => quitarEstampa(posicion),
+          }, `${posicion} · quitar`)
+          : el('span', {}, String(posicion))));
+    }
+    $('#n-estampas').replaceChildren(...casillas);
+  }
+
+  function quitarEstampa(posicion) {
+    const nueva = estampasNuevas.get(posicion);
+    if (nueva) URL.revokeObjectURL(nueva.url);
+    estampasNuevas.delete(posicion);
+    if (editando?.estampas_urls?.[posicion - 1]) estampasQuitadas.add(posicion);
+    pintarEstampas();
+    actualizarVistaPrevia();
+  }
+
+  $('#n-estampa-archivo').addEventListener('change', () => {
+    const archivo = $('#n-estampa-archivo').files[0];
+    $('#n-estampa-archivo').value = '';
+    if (!archivo || !posicionElegida) return;
+    const anterior = estampasNuevas.get(posicionElegida);
+    if (anterior) URL.revokeObjectURL(anterior.url);
+    estampasNuevas.set(posicionElegida, { archivo, url: URL.createObjectURL(archivo) });
+    estampasQuitadas.delete(posicionElegida);
+    pintarEstampas();
+    actualizarVistaPrevia();
+  });
+  $('#n-sellos').addEventListener('input', pintarEstampas);
+
+  // Sube o quita las imágenes por estampa (solo las posiciones que se ven en el formulario).
+  async function guardarEstampas(negocio) {
+    const total = totalEstampas();
+    for (const [posicion, { archivo }] of estampasNuevas) {
+      if (posicion <= total) negocio = await subirArchivo(`/api/negocios/${negocio.id}/estampas/${posicion}`, archivo);
+    }
+    for (const posicion of estampasQuitadas) {
+      if (posicion > total) continue;
+      negocio = (await llamar(`/api/negocios/${negocio.id}/estampas/${posicion}`, { metodo: 'DELETE' })).negocio;
+    }
+    return negocio;
   }
 
   // --- Medidas recomendadas: avisa (sin bloquear) si la imagen no es ideal ---
@@ -274,28 +354,57 @@
     temporizadorTira = setTimeout(() => pedirTira({ total, llenos, texto }), 250);
   }
 
+  // Copia pequeña del archivo para la vista previa: la tira no necesita más de 300 px.
+  const reducidas = new WeakMap();
+  function reducir(archivo) {
+    if (!reducidas.has(archivo)) {
+      reducidas.set(archivo, (async () => {
+        const url = URL.createObjectURL(archivo);
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          const ancho = img.naturalWidth || 300;
+          const alto = img.naturalHeight || 300;
+          const escala = Math.min(1, 300 / Math.max(ancho, alto));
+          const lienzo = document.createElement('canvas');
+          lienzo.width = Math.max(1, Math.round(ancho * escala));
+          lienzo.height = Math.max(1, Math.round(alto * escala));
+          lienzo.getContext('2d').drawImage(img, 0, 0, lienzo.width, lienzo.height);
+          return await new Promise((listo) => lienzo.toBlob((png) => listo(png || archivo), 'image/png'));
+        } catch {
+          return archivo; // el servidor decide si es una imagen válida
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      })());
+    }
+    return reducidas.get(archivo);
+  }
+
   // La zona de estampas la dibuja el servidor, igual que en las tarjetas reales.
+  // Se le mandan solo los cambios sin guardar; lo demás lo toma del negocio guardado.
   async function pedirTira({ total, llenos, texto }) {
     const fondoSellos = $('#n-fondo-igual').checked ? $('#n-primario').value : $('#n-fondo-sellos').value;
-    const archivoSello = $('#n-sello').files[0];
-    const archivoLogo = $('#n-logo').files[0];
-    const quitarSello = $('#n-sello-quitar').checked;
-    let cuerpo = null;
-    let fuente = '';
-    if (archivoSello) cuerpo = archivoSello;
-    else if (editando?.sello_url && !quitarSello) fuente = 'sello';
-    else if (archivoLogo) cuerpo = archivoLogo;
-    else if (editando?.logo_url) fuente = 'logo';
+    const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]],
+      ...[...estampasNuevas].map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
+    const quitar = [...estampasQuitadas];
+    if ($('#n-sello-quitar').checked) quitar.push('sello');
 
-    const parametros = new URLSearchParams({
-      total, llenos, fondo: fondoSellos.slice(1), color: texto.slice(1), fuente, negocio_id: editando?.id || '',
-    });
     const numero = ++pedidoTira;
+    const partes = await Promise.all(archivos.map(async ([nombre, archivo]) => [nombre, await reducir(archivo)]));
+    if (numero !== pedidoTira) return;
+    const parametros = new URLSearchParams({
+      total, llenos, fondo: fondoSellos.slice(1), color: texto.slice(1), negocio_id: editando?.id || '',
+      pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
+      quitar: quitar.join(','),
+      partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
+    });
     try {
       const r = await fetch(`/api/operador/vista-previa/estampas?${parametros}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, ...(cuerpo ? { 'Content-Type': cuerpo.type || 'image/png' } : {}) },
-        body: cuerpo || undefined,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' },
+        body: new Blob(partes.map(([, png]) => png)),
       });
       if (r.status === 401) return salir();
       if (!r.ok || numero !== pedidoTira) return; // llegó tarde: ya hay un pedido más nuevo
@@ -327,6 +436,7 @@
       color_fondo_sellos: $('#n-fondo-igual').checked ? null : $('#n-fondo-sellos').value,
       sellos_para_premio: Number($('#n-sellos').value),
       descripcion_premio: $('#n-premio').value,
+      estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
     if ($('#n-reglas').value !== reglasAlAbrir) cuerpo.reglas = $('#n-reglas').value;
@@ -340,6 +450,7 @@
       const sello = $('#n-sello').files[0];
       if (logo) negocio = await subirImagen(negocio.id, 'logo', logo);
       if (sello) negocio = await subirImagen(negocio.id, 'sello', sello);
+      negocio = await guardarEstampas(negocio);
       toast(editando ? 'Guardado. Las tarjetas se actualizan en unos minutos.' : `Negocio creado. Inscripción: ${r.url_inscripcion}`, 'exito');
       await cargarNegocios();
       // Queda abierto con la vista previa nueva (la lista trae las reglas vigentes).

@@ -60,9 +60,11 @@ router.get('/estado', requiereOperador, async (req, res) => {
 });
 
 // Vista previa de la zona de estampas mientras se edita un negocio, antes de guardar.
-// El cuerpo puede traer la imagen elegida (aún sin subir); si no, se usa la imagen
-// guardada del negocio indicada en ?fuente=sello|logo. Mismo dibujo que en las tarjetas.
-router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'image/*', limit: '5mb' }), async (req, res) => {
+// Parte de las imágenes guardadas del negocio (?negocio_id) y les aplica los cambios
+// sin guardar: ?quitar=sello,3 (quitadas) y los archivos elegidos, que vienen
+// seguidos en el cuerpo con sus tamaños en ?partes=logo:1200,sello:800,3:950
+// (logo, sello o la posición de la estampa). Mismo dibujo que en las tarjetas.
+router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
   const color = (valor, porDefecto) => (/^[0-9a-f]{6}$/i.test(valor || '') ? `#${valor}` : porDefecto);
   const total = Math.min(30, Math.max(1, Number.parseInt(req.query.total, 10) || 10));
   const negocio = {
@@ -70,18 +72,36 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'ima
     sellos_para_premio: total,
     color_primario: color(req.query.fondo, '#1a1a2e'),
     color_secundario: color(req.query.color, '#ffffff'),
+    estampas_pendientes: req.query.pendientes === 'ocultas' ? 'ocultas' : 'gris',
     logo_url: null,
     sello_url: null,
+    estampas_urls: [],
   };
-  const archivo = Buffer.isBuffer(req.body) && req.body.length ? req.body : null;
-  if (!archivo && v.esUuid(req.query.negocio_id) && ['sello', 'logo'].includes(req.query.fuente)) {
-    const campo = marca.TIPOS[req.query.fuente];
-    const { data, error } = await supabase.from('negocios').select(campo).eq('id', req.query.negocio_id).maybeSingle();
-    if (error) throw errorDb(error, 'leer imagen para vista previa');
-    negocio[campo] = data?.[campo] || null;
+  if (v.esUuid(req.query.negocio_id)) {
+    const { data, error } = await supabase
+      .from('negocios').select('logo_url, sello_url, estampas_urls').eq('id', req.query.negocio_id).maybeSingle();
+    if (error) throw errorDb(error, 'leer imágenes para vista previa');
+    if (data) Object.assign(negocio, { ...data, estampas_urls: [...(data.estampas_urls || [])] });
   }
+
+  // Cada imagen se nombra "logo", "sello" o el número de la posición (1 a 30).
+  const poner = (nombre, valor) => {
+    if (nombre === 'logo' || nombre === 'sello') negocio[`${nombre}_url`] = valor;
+    else if (/^\d+$/.test(nombre) && nombre >= 1 && nombre <= 30) negocio.estampas_urls[nombre - 1] = valor;
+  };
+  for (const nombre of String(req.query.quitar || '').split(',')) poner(nombre, null);
+  const cuerpo = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  let desde = 0;
+  for (const parte of String(req.query.partes || '').split(',').filter(Boolean)) {
+    const [nombre, largo] = parte.split(':');
+    const hasta = desde + Number(largo);
+    if (!Number.isInteger(hasta) || hasta <= desde || hasta > cuerpo.length) throw new HttpError(400, 'Imágenes de la vista previa incompletas.');
+    poner(nombre, cuerpo.subarray(desde, hasta));
+    desde = hasta;
+  }
+
   const llenos = Math.min(total, Math.max(0, Number.parseInt(req.query.llenos, 10) || 0));
-  const png = await marca.tiraDelNegocio(negocio, llenos, { imagenEstampa: archivo });
+  const png = await marca.tiraDelNegocio(negocio, llenos);
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(png);
 });
 

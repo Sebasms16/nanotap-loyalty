@@ -130,14 +130,16 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
 - **Diseño de la tarjeta (minimalista):** arriba el logo y el nombre del negocio con el contador de estampas; al
   centro la zona de estampas; abajo el premio, cuántas faltan y el QR. Los datos del cliente van al reverso (Apple)
   o al detalle (Google).
-- **Estampas:** cada estampa es el logo del negocio (o una imagen propia de estampa): **a color** si ya se obtuvo y
-  **en gris tenue** si falta. Los logos con fondo sólido se recortan en círculo. Sin logo, se dibujan círculos con
-  los colores del negocio. La imagen se genera en el servidor (`services/estampas.service.js`); Google la descarga
-  de `/img/negocios/:id/estampas.png`.
+- **Estampas:** cada estampa es el logo del negocio o una imagen general de estampa, y además cada posición puede
+  tener **su propia imagen** (por ejemplo, la última con la foto del premio); las que no tienen usan la general. La
+  forma de la imagen se respeta (sin recorte en círculo). La estampa obtenida se ve **a color**; la que falta, según
+  elija el negocio, **en gris tenue** o **oculta** (círculo vacío, sin revelar la imagen). Sin ninguna imagen, se
+  dibujan círculos con los colores del negocio. La imagen se genera en el servidor (`services/estampas.service.js`);
+  Google la descarga de `/img/negocios/:id/estampas.png`.
 - **Reglas del programa:** van en el reverso (Apple), en el detalle (Google) y en la página de inscripción. Hay
   reglas sugeridas (`src/utils/reglas.js`) que se ajustan solas al nombre, premio y cantidad de estampas; cada
   negocio puede tener las suyas desde el panel (una por línea).
-- **Imágenes de marca:** el operador sube el logo y la imagen de la estampa desde `/operador/` (PNG, JPG, WebP o
+- **Imágenes de marca:** el operador sube el logo, la imagen de la estampa y las de cada posición desde `/operador/` (PNG, JPG, WebP o
   SVG, hasta 5 MB). Se convierten a PNG y se guardan en Supabase Storage, en el bucket público `marcas`, que se
   crea solo la primera vez. Al cambiar la marca, todas las tarjetas del negocio se actualizan en segundo plano.
 
@@ -176,6 +178,8 @@ Las rutas de la sección 8 de la especificación, más:
 | `GET` | `/api/operador/clientes?negocio_id=&q=` | Operador | Buscar clientes (teléfono, correo, nombre) |
 | `GET` | `/api/operador/estado` | Operador | Wallets configurados, vencimiento de certificados, reintentos pendientes |
 | `PATCH` | `/api/negocios/:id` | Operador | Editar / activar / desactivar; re-sincroniza las tarjetas si cambia la marca |
+| `POST` | `/api/negocios/:id/imagenes/:tipo` | Operador | Subir el logo (`logo`) o la imagen general de la estampa (`sello`) |
+| `POST`/`DELETE` | `/api/negocios/:id/estampas/:posicion` | Operador | Subir / quitar la imagen propia de una estampa (1 a 30) |
 | `GET`/`POST` | `/api/negocios/:id/staff` | Operador | Listar / crear usuarios de staff |
 | `PATCH` | `/api/staff/:id` | Operador | Activar/desactivar, nombre, nueva contraseña |
 | `GET` | `/api/staff/yo` | Staff | Datos de la sesión |

@@ -1,5 +1,6 @@
-// Tira de estampas con la imagen del negocio: cada estampa obtenida muestra la
-// imagen a color y cada estampa pendiente la muestra en gris y tenue.
+// Tira de estampas con las imágenes del negocio: cada posición puede tener su
+// propia imagen. La estampa obtenida la muestra a color; la pendiente, en gris y
+// tenue, o como un círculo vacío si el negocio prefiere no revelarla.
 // La imagen se respeta tal cual (sin aro ni recorte en círculo): su forma es la estampa.
 // Se usa como strip de Apple Wallet y como hero image de Google Wallet.
 const sharp = require('sharp');
@@ -38,31 +39,59 @@ async function estampaGris(color) {
   return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
 }
 
+// Círculos del mismo estilo que la tira sin imágenes (imagen.service): lleno con
+// un punto al centro para una estampa obtenida, solo el contorno para una pendiente.
+function circulo(lado, { color, fondo, lleno }) {
+  const c = lado / 2;
+  const radio = lado * 0.45;
+  const svg = lleno
+    ? `<circle cx="${c}" cy="${c}" r="${radio}" fill="${color}"/>`
+      + `<circle cx="${c}" cy="${c}" r="${radio * 0.42}" fill="${fondo}" fill-opacity="0.9"/>`
+    : `<circle cx="${c}" cy="${c}" r="${radio * 0.94}" fill="none" stroke="${color}" stroke-opacity="0.45"`
+      + ` stroke-width="${Math.max(2, radio * 0.12)}"/>`;
+  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${lado}" height="${lado}">${svg}</svg>`))
+    .png().toBuffer();
+}
+
 /**
- * @param {Buffer} logo   imagen de la estampa (PNG, JPG, WebP o SVG)
- * @param {number} total  estampas para el premio
- * @param {number} llenos estampas obtenidas
- * @param {string} fondo  color de fondo de la zona de estampas (#rrggbb)
+ * @param {(Buffer|null)[]} imagenes una por estampa (PNG, JPG, WebP o SVG); null = círculo
+ * @param {number} total    estampas para el premio
+ * @param {number} llenos   estampas obtenidas
+ * @param {string} fondo    color de fondo de la zona de estampas (#rrggbb)
+ * @param {string} sello    color de los círculos de las posiciones sin imagen (#rrggbb)
+ * @param {boolean} ocultas las pendientes se ven como círculo vacío en vez de la imagen en gris
  */
-async function tiraConLogo({ logo, total, llenos, fondo, ancho = 750, alto = 246 }) {
+async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246 }) {
   const filas = filasPara(total);
   const columnas = Math.ceil(total / filas);
   const celda = Math.min((ancho * 0.94) / columnas, (alto * 0.9) / filas);
   const lado = Math.round(celda * 0.84);
   const origenY = (alto - celda * filas) / 2;
 
-  const color = await estampaColor(logo, lado);
-  const gris = await estampaGris(color);
+  // Cada imagen distinta se prepara una sola vez: lo común es que varias posiciones la compartan.
+  const memo = (crear) => {
+    const hechas = new Map();
+    return (clave) => {
+      if (!hechas.has(clave)) hechas.set(clave, crear(clave));
+      return hechas.get(clave);
+    };
+  };
+  const color = memo((imagen) => estampaColor(imagen, lado));
+  const gris = memo(async (imagen) => estampaGris(await color(imagen)));
+  const circulos = memo((esLleno) => circulo(lado, { color: sello, fondo, lleno: esLleno }));
 
-  const capas = [];
-  for (let i = 0; i < total; i++) {
+  const capas = await Promise.all(Array.from({ length: total }, async (_, i) => {
+    const imagen = imagenes[i] || null;
+    const input = i < llenos
+      ? await (imagen ? color(imagen) : circulos(true))
+      : await (imagen && !ocultas ? gris(imagen) : circulos(false));
     const fila = Math.floor(i / columnas);
     const enFila = fila === filas - 1 ? total - columnas * (filas - 1) : columnas;
     const origenX = (ancho - celda * enFila) / 2;
     const cx = origenX + celda * ((i % columnas) + 0.5);
     const cy = origenY + celda * (fila + 0.5);
-    capas.push({ input: i < llenos ? color : gris, left: Math.round(cx - lado / 2), top: Math.round(cy - lado / 2) });
-  }
+    return { input, left: Math.round(cx - lado / 2), top: Math.round(cy - lado / 2) };
+  }));
 
   const [r, g, b] = hexARgb(fondo);
   return sharp({ create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
@@ -106,4 +135,4 @@ async function iconoDesdeLogo(logo, tam, fondo) {
   return sharp(await logoParaGoogle(logo, fondo)).resize(tam, tam).png().toBuffer();
 }
 
-module.exports = { tiraConLogo, normalizarImagen, logoEncabezado, logoParaGoogle, iconoDesdeLogo };
+module.exports = { tiraConImagenes, normalizarImagen, logoEncabezado, logoParaGoogle, iconoDesdeLogo };

@@ -86,6 +86,21 @@
               <p class="aviso-imagen" id="n-sello-aviso" hidden></p>
             </div>
 
+            <fieldset class="campo">
+              <legend>Una imagen distinta por estampa <span class="opcional">(opcional; las que no tengan usan la de arriba)</span></legend>
+              <p class="ayuda">Toque una casilla para elegir su imagen (por ejemplo, la última con la foto del premio). Se respeta la
+                forma de la imagen: en PNG con fondo transparente se ve solo el dibujo; una foto con fondo se ve como un cuadro.
+                En el teléfono cada estampa mide menos de 1 cm: use imágenes simples y de cerca.</p>
+              <div class="estampas-propias" id="n-estampas"></div>
+              <input id="n-estampa-archivo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+            </fieldset>
+
+            <fieldset class="campo">
+              <legend>Estampas que faltan</legend>
+              <label class="casilla"><input type="radio" name="n-pendientes" value="gris" checked> En gris: el cliente ve qué estampas le faltan</label>
+              <label class="casilla"><input type="radio" name="n-pendientes" value="ocultas"> Ocultas: un círculo vacío, sin revelar la imagen (sorpresa)</label>
+            </fieldset>
+
             <div class="fila">
               <div class="campo">
                 <label for="n-primario">Color de la tarjeta</label>

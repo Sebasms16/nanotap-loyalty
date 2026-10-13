@@ -28,6 +28,12 @@ function datosNegocio(cuerpo, { parcial }) {
   }
   // Las imágenes se suben con POST /:id/imagenes/:tipo; aquí solo se pueden quitar.
   if (cuerpo.sello_url === null) d.sello_url = null;
+  if (cuerpo.estampas_pendientes !== undefined) {
+    if (!['gris', 'ocultas'].includes(cuerpo.estampas_pendientes)) {
+      throw new HttpError(400, 'Las estampas pendientes deben verse "gris" u "ocultas".');
+    }
+    d.estampas_pendientes = cuerpo.estampas_pendientes;
+  }
   if (cuerpo.sellos_para_premio !== undefined) {
     d.sellos_para_premio = v.entero(cuerpo.sellos_para_premio, 'sellos para premio', { min: 1, max: 30 });
   }
@@ -81,29 +87,53 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   if (!data) throw new HttpError(404, 'Negocio no encontrado.');
 
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
-    'sellos_para_premio', 'descripcion_premio', 'reglas'].some((k) => k in datos);
+    'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });
 });
 
-// Subida del logo o de la imagen de la estampa. El cuerpo es el archivo tal cual
-// (Content-Type image/png, image/jpeg, image/webp o image/svg+xml).
-router.post('/:id/imagenes/:tipo', requiereOperador, express.raw({ type: 'image/*', limit: '5mb' }), async (req, res) => {
-  if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
-  if (!marca.TIPOS[req.params.tipo]) throw new HttpError(404, 'Tipo de imagen desconocido.');
+// Guarda la imagen subida con `guardar(buffer)` y re-sincroniza las tarjetas. El
+// cuerpo es el archivo tal cual (Content-Type image/png, image/jpeg, image/webp o image/svg+xml).
+async function recibirImagen(req, res, guardar) {
   if (!Buffer.isBuffer(req.body) || !req.body.length) {
     throw new HttpError(415, 'Suba una imagen PNG, JPG, WebP o SVG.');
   }
   let negocio;
   try {
-    negocio = await marca.subirImagen(req.params.id, req.params.tipo, req.body);
+    negocio = await guardar(req.body);
   } catch (error) {
     if (/unsupported image format|Input buffer|corrupt/i.test(error.message)) {
       throw new HttpError(415, 'El archivo no es una imagen válida. Use PNG, JPG, WebP o SVG.');
     }
     throw error;
   }
+  if (!negocio) throw new HttpError(404, 'Negocio no encontrado.');
+  res.json({ negocio, tarjetas_en_cola: await refrescarTarjetas(negocio.id) });
+}
+const crudo = express.raw({ type: 'image/*', limit: '5mb' });
+
+// Subida del logo o de la imagen general de la estampa.
+router.post('/:id/imagenes/:tipo', requiereOperador, crudo, async (req, res) => {
+  if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
+  if (!marca.TIPOS[req.params.tipo]) throw new HttpError(404, 'Tipo de imagen desconocido.');
+  await recibirImagen(req, res, (buffer) => marca.subirImagen(req.params.id, req.params.tipo, buffer));
+});
+
+// Imagen propia de una estampa (posición 1 a 30). DELETE la quita y esa
+// posición vuelve a usar la imagen general.
+function posicionEstampa(req) {
+  if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
+  return v.entero(req.params.posicion, 'posición de la estampa', { min: 1, max: 30 });
+}
+
+router.post('/:id/estampas/:posicion', requiereOperador, crudo, async (req, res) => {
+  const posicion = posicionEstampa(req);
+  await recibirImagen(req, res, (buffer) => marca.subirEstampa(req.params.id, posicion, buffer));
+});
+
+router.delete('/:id/estampas/:posicion', requiereOperador, async (req, res) => {
+  const negocio = await marca.quitarEstampa(req.params.id, posicionEstampa(req));
   if (!negocio) throw new HttpError(404, 'Negocio no encontrado.');
   res.json({ negocio, tarjetas_en_cola: await refrescarTarjetas(negocio.id) });
 });
