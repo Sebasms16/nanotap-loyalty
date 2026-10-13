@@ -54,8 +54,14 @@ El sistema está publicado en Railway, proyecto `nanotap-loyalty`:
   desde el `.env` local. En producción `BASE_URL=https://tarjetas.nanotap.app` y `NODE_ENV=production`.
   Cambiar `BASE_URL` no mueve las tarjetas ya instaladas: guardan la dirección con la que se crearon.
 - **Logs:** `railway logs --service nanotap-loyalty`.
-- **Pendiente:** Railway deja de leer `railway.json` el 2026-12-01. Antes de esa fecha, migrar con
-  `railway config migrate --apply` y volver a agregar la regla de reinicio.
+- **Configuración del servicio como código:** `.railway/railway.ts` (reemplazó a `railway.json`, que Railway dejó
+  de leer el 2026-12-01). Define el arranque (`npm start`), la verificación de salud (`/salud`) y el dominio.
+  Revisar con `railway config plan` y aplicar con `railway config apply`. **Ojo:** una variable que no esté en ese
+  archivo se borra de Railway al aplicar; por eso cada una va como `preserve()` (el valor queda en Railway, nunca
+  en el código). Si agrega una variable, agréguela también ahí. La regla de reinicio es la de Railway por defecto
+  (si falla, reinicia hasta 10 veces).
+  En Windows, el paquete `railway/iac` necesita saber dónde está la CLI; desde PowerShell:
+  `$env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"; & $env:_ config plan`.
 - No deje el servidor local corriendo con la misma base de datos: su worker podría actualizar tarjetas de Google
   con direcciones `localhost`.
 
