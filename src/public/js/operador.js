@@ -563,13 +563,15 @@
     evento.preventDefault();
     const form = evento.currentTarget;
     try {
-      await llamar(`/api/negocios/${seleccionado.id}/staff`, {
+      const r = await llamar(`/api/negocios/${seleccionado.id}/staff`, {
         metodo: 'POST',
         cuerpo: { usuario: $('#s-usuario').value, nombre: $('#s-nombre').value, password: $('#s-password').value },
       });
       toast('Usuario creado', 'exito');
       form.reset();
-      mensaje($('#error-staff'), '');
+      // El usuario se guarda en minúsculas; se muestra tal cual debe escribirse.
+      mensaje($('#error-staff'), `Para entrar: ${baseUrl}/${seleccionado.slug}/staff · `
+        + `código del negocio "${seleccionado.slug}", usuario "${r.staff.usuario}".`, 'exito');
       cargarStaff();
       cargarNegocios();
     } catch (e) { mensaje($('#error-staff'), e.message); }

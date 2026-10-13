@@ -15,8 +15,11 @@
   <main class="contenedor">
     <form id="formulario" class="tarjeta" novalidate>
       <div class="campo">
-        <label for="negocio">Negocio</label>
-        <input id="negocio" type="text" autocapitalize="none" autocomplete="organization" placeholder="ej. podosport" required>
+        <label for="negocio">Código del negocio</label>
+        <p class="ayuda" id="negocio-ayuda">Es el que aparece en el enlace de staff del negocio: en …/<strong>mi-negocio</strong>/staff
+          el código es <strong>mi-negocio</strong>. Si entra con ese enlace, ya viene puesto.</p>
+        <input id="negocio" type="text" autocapitalize="none" autocomplete="organization" placeholder="ej. podosport"
+          aria-describedby="negocio-ayuda" required>
       </div>
       <div class="campo">
         <label for="usuario">Usuario</label>

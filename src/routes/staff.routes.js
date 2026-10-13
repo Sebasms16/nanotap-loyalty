@@ -17,25 +17,28 @@ router.post('/login', limiteLogin, async (req, res) => {
   const slug = String(req.body.negocio || '').trim().toLowerCase();
   const usuario = String(req.body.usuario || '').trim().toLowerCase();
   const password = String(req.body.password || '');
-  const errorCredenciales = new HttpError(401, 'Negocio, usuario o contraseña incorrectos.');
+  const errorCredenciales = new HttpError(401, 'Usuario o contraseña incorrectos.');
   if (!slug || !usuario || !password) throw errorCredenciales;
 
   const { data: negocio, error } = await supabase
     .from('negocios').select('id, slug, nombre, activo').eq('slug', slug).maybeSingle();
   if (error) throw errorDb(error, 'login: buscar negocio');
-
-  let staff = null;
-  if (negocio) {
-    const r = await supabase
-      .from('staff').select('id, negocio_id, usuario, nombre, activo, password_hash')
-      .eq('negocio_id', negocio.id).eq('usuario', usuario).maybeSingle();
-    if (r.error) throw errorDb(r.error, 'login: buscar staff');
-    staff = r.data;
+  // El código del negocio es público (va en el enlace de inscripción), así que se
+  // puede decir que no existe; usuario y contraseña siguen con el mensaje genérico.
+  if (!negocio) {
+    log.warn('login de staff fallido: negocio inexistente', { operacion: 'login_staff', slug, usuario });
+    throw new HttpError(401, `No existe un negocio con el código "${slug.slice(0, 60)}". Revise el enlace de staff de su negocio.`);
   }
+
+  const r = await supabase
+    .from('staff').select('id, negocio_id, usuario, nombre, activo, password_hash')
+    .eq('negocio_id', negocio.id).eq('usuario', usuario).maybeSingle();
+  if (r.error) throw errorDb(r.error, 'login: buscar staff');
+  const staff = r.data;
 
   const valida = await bcrypt.compare(password, staff?.password_hash || HASH_FICTICIO);
   if (!staff || !valida || !staff.activo) {
-    log.warn('login de staff fallido', { operacion: 'login_staff', negocio_id: negocio?.id, usuario });
+    log.warn('login de staff fallido', { operacion: 'login_staff', negocio_id: negocio.id, usuario });
     throw errorCredenciales;
   }
   if (!negocio.activo) throw new HttpError(403, 'El negocio está inactivo. Contacte a Nanotap.');
