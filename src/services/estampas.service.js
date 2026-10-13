@@ -94,9 +94,22 @@ async function normalizarImagen(buffer) {
   return sharp(buffer).rotate().resize(660, 660, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
 }
 
+// Logo listo para la tarjeta. Con fondo transparente se le quita el margen para
+// que el dibujo ocupe todo el espacio. Con fondo sólido (JPG, o PNG sin
+// transparencia) se respeta su margen y se le redondean las esquinas, como un
+// ícono: recortarlo dejaría un borde finito del fondo pegado al dibujo.
+async function logoListo(logo) {
+  if (!(await sharp(logo).stats()).isOpaque) return sinMargen(logo);
+  const { width, height } = await sharp(logo).metadata();
+  const radio = Math.round(Math.min(width, height) * 0.18);
+  const mascara = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`
+    + `<rect width="${width}" height="${height}" rx="${radio}" ry="${radio}" fill="#fff"/></svg>`);
+  return sharp(logo).ensureAlpha().composite([{ input: mascara, blend: 'dest-in' }]).png().toBuffer();
+}
+
 // Logo para el encabezado de Apple Wallet: máximo 160x50 pt.
 async function logoEncabezado(logo, escala) {
-  return sharp(await sinMargen(logo))
+  return sharp(await logoListo(logo))
     .resize(160 * escala, 50 * escala, { fit: 'inside' })
     .png()
     .toBuffer();
@@ -107,7 +120,7 @@ async function logoEncabezado(logo, escala) {
 async function logoParaGoogle(logo, fondo, tam = 660) {
   const [r, g, b] = hexARgb(fondo);
   const interior = Math.round(tam * 0.64);
-  const dibujo = await sharp(await sinMargen(logo))
+  const dibujo = await sharp(await logoListo(logo))
     .resize(interior, interior, { fit: 'contain', background: TRANSPARENTE })
     .png()
     .toBuffer();

@@ -219,6 +219,22 @@ test('sin logo, la zona de estampas usa los círculos de color', async () => {
   assert.equal(png.readUInt32BE(16), 750);
 });
 
+test('logo con fondo sólido: conserva su margen y redondea las esquinas', async () => {
+  const sharp = require('sharp');
+  const { logoEncabezado } = require('../src/services/estampas.service');
+  // Fondo blanco opaco con un cuadro negro al centro (como un logo en JPG).
+  const logo = await sharp({ create: { width: 400, height: 400, channels: 3, background: '#ffffff' } })
+    .composite([{ input: { create: { width: 200, height: 200, channels: 3, background: '#000000' } }, left: 100, top: 100 }])
+    .png().toBuffer();
+  const png = await logoEncabezado(logo, 2); // 100 × 100
+  const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  const pixel = (x, y) => [...data.subarray((y * info.width + x) * 4, (y * info.width + x) * 4 + 4)];
+  assert.equal(info.width, 100);
+  assert.equal(pixel(0, 0)[3], 0); // esquina redondeada: transparente
+  assert.deepEqual(pixel(12, 50), [255, 255, 255, 255]); // el margen blanco se conserva (no se recortó)
+  assert.deepEqual(pixel(50, 50), [0, 0, 0, 255]);
+});
+
 test('estampas: ninguna cae en los bordes que el iPhone recorta', () => {
   // La tarjeta se ve de ~340 pt de ancho y el strip mide 375 pt: iOS recorta ~17 pt por lado.
   for (const ancho of [375, 750, 1125]) {
