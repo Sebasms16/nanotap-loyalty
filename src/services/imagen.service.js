@@ -83,6 +83,26 @@ function filasPara(total) {
   return 3;
 }
 
+// Parte del ancho donde van las estampas. El strip mide 375 pt, pero en la mayoría
+// de los iPhone la tarjeta se muestra más angosta (~340 pt) y iOS recorta los
+// bordes de la imagen: con un 10 % de margen por lado ninguna estampa queda cortada.
+const ANCHO_UTIL = 0.8;
+
+// Tamaño de cada celda y centro de cada estampa en la tira (filas centradas).
+function distribuirEstampas(total, ancho, alto) {
+  const filas = filasPara(total);
+  const columnas = Math.ceil(total / filas);
+  const celda = Math.min((ancho * ANCHO_UTIL) / columnas, (alto * 0.9) / filas);
+  const origenY = (alto - celda * filas) / 2;
+  const centros = Array.from({ length: total }, (_, i) => {
+    const fila = Math.floor(i / columnas);
+    const enFila = fila === filas - 1 ? total - columnas * (filas - 1) : columnas;
+    const origenX = (ancho - celda * enFila) / 2;
+    return { x: origenX + celda * ((i % columnas) + 0.5), y: origenY + celda * (fila + 0.5) };
+  });
+  return { celda, centros };
+}
+
 /**
  * Tira de sellos. Por defecto 750x246 (strip @2x de Apple para storeCard;
  * Google también la acepta como hero image).
@@ -91,19 +111,11 @@ function tiraSellos({ total, llenos, fondo, sello, ancho = 750, alto = 246 }) {
   const colorFondo = hexARgb(fondo);
   const colorSello = hexARgb(sello);
   const l = lienzo(ancho, alto, colorFondo);
-  const filas = filasPara(total);
-  const columnas = Math.ceil(total / filas);
-  const celda = Math.min((ancho * 0.92) / columnas, (alto * 0.9) / filas);
+  const { celda, centros } = distribuirEstampas(total, ancho, alto);
   const radio = celda * 0.38;
-  const origenY = (alto - celda * filas) / 2;
 
   for (let i = 0; i < total; i++) {
-    const fila = Math.floor(i / columnas);
-    const enFila = fila === filas - 1 ? total - columnas * (filas - 1) : columnas;
-    const col = i % columnas;
-    const origenX = (ancho - celda * enFila) / 2;
-    const cx = origenX + celda * (col + 0.5);
-    const cy = origenY + celda * (fila + 0.5);
+    const { x: cx, y: cy } = centros[i];
     if (i < llenos) {
       circulo(l, cx, cy, radio, colorSello);
       circulo(l, cx, cy, radio * 0.42, colorFondo, { alfa: 0.9 });
@@ -137,5 +149,6 @@ function conCache(clave, generar) {
 module.exports = {
   tiraSellos: (p) => conCache(`tira:${JSON.stringify(p)}`, () => tiraSellos(p)),
   icono: (p) => conCache(`icono:${JSON.stringify(p)}`, () => icono(p)),
+  distribuirEstampas,
   hexARgb,
 };

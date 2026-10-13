@@ -184,9 +184,9 @@ test('estampas con logo: obtenidas a color y pendientes en gris', async () => {
     const i = (y * info.width + x) * info.channels;
     return [data[i], data[i + 1], data[i + 2]];
   };
-  const celda = Math.min((750 * 0.94) / 4, 246 * 0.9);
-  const x0 = Math.round((750 - celda * 4) / 2 + celda / 2);
-  const x3 = Math.round(x0 + celda * 3);
+  const { celda, centros } = imagen.distribuirEstampas(4, 750, 246);
+  const x0 = Math.round(centros[0].x);
+  const x3 = Math.round(centros[3].x);
   const [r1, g1, b1] = pixel(x0, 123);
   const [r4, g4, b4] = pixel(x3, 123);
   assert.ok(r1 > 180 && g1 < 80 && b1 < 80, `la obtenida debería ser roja: ${r1},${g1},${b1}`);
@@ -219,6 +219,21 @@ test('sin logo, la zona de estampas usa los círculos de color', async () => {
   assert.equal(png.readUInt32BE(16), 750);
 });
 
+test('estampas: ninguna cae en los bordes que el iPhone recorta', () => {
+  // La tarjeta se ve de ~340 pt de ancho y el strip mide 375 pt: iOS recorta ~17 pt por lado.
+  for (const ancho of [375, 750, 1125]) {
+    const alto = Math.round((ancho * 123) / 375);
+    const recorte = (ancho * 20) / 375; // margen con holgura
+    for (let total = 1; total <= 30; total++) {
+      const { celda, centros } = imagen.distribuirEstampas(total, ancho, alto);
+      const mitad = (celda * 0.84) / 2; // la estampa ocupa el 84 % de su celda
+      for (const { x } of centros) {
+        assert.ok(x - mitad >= recorte && x + mitad <= ancho - recorte, `${total} estampas a ${ancho} px: x=${x}`);
+      }
+    }
+  }
+});
+
 test('estampas: una imagen por posición y pendientes en gris u ocultas', async () => {
   const sharp = require('sharp');
   const marca = require('../src/services/marca.service');
@@ -227,11 +242,11 @@ test('estampas: una imagen por posición y pendientes en gris u ocultas', async 
   const rojo = await cuadro(255, 0, 0);
   const azul = await cuadro(0, 0, 255);
   // Color en el centro de cada estampa: 4 estampas en una fila sobre 750 × 246.
+  const posiciones = imagen.distribuirEstampas(4, 750, 246).centros;
   const centros = async (png) => {
     const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
-    return [0, 1, 2, 3].map((i) => {
-      const x = Math.round(22.5 + 176.25 * (i + 0.5));
-      const p = (123 * info.width + x) * info.channels;
+    return posiciones.map(({ x, y }) => {
+      const p = (Math.round(y) * info.width + Math.round(x)) * info.channels;
       return [...data.subarray(p, p + 3)];
     });
   };

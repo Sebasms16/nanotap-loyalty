@@ -4,16 +4,10 @@
 // La imagen se respeta tal cual (sin aro ni recorte en círculo): su forma es la estampa.
 // Se usa como strip de Apple Wallet y como hero image de Google Wallet.
 const sharp = require('sharp');
-const { hexARgb } = require('./imagen.service');
+const { hexARgb, distribuirEstampas } = require('./imagen.service');
 
 const OPACIDAD_PENDIENTE = 0.3;
 const TRANSPARENTE = { r: 0, g: 0, b: 0, alpha: 0 };
-
-function filasPara(total) {
-  if (total <= 6) return 1;
-  if (total <= 16) return 2;
-  return 3;
-}
 
 // Quita el margen transparente que traen muchos logos, para que el dibujo
 // ocupe todo el espacio (si la imagen es uniforme, trim falla y se usa tal cual).
@@ -62,11 +56,8 @@ function circulo(lado, { color, fondo, lleno }) {
  * @param {boolean} ocultas las pendientes se ven como círculo vacío en vez de la imagen en gris
  */
 async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246 }) {
-  const filas = filasPara(total);
-  const columnas = Math.ceil(total / filas);
-  const celda = Math.min((ancho * 0.94) / columnas, (alto * 0.9) / filas);
+  const { celda, centros } = distribuirEstampas(total, ancho, alto);
   const lado = Math.round(celda * 0.84);
-  const origenY = (alto - celda * filas) / 2;
 
   // Cada imagen distinta se prepara una sola vez: lo común es que varias posiciones la compartan.
   const memo = (crear) => {
@@ -85,12 +76,8 @@ async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#fffff
     const input = i < llenos
       ? await (imagen ? color(imagen) : circulos(true))
       : await (imagen && !ocultas ? gris(imagen) : circulos(false));
-    const fila = Math.floor(i / columnas);
-    const enFila = fila === filas - 1 ? total - columnas * (filas - 1) : columnas;
-    const origenX = (ancho - celda * enFila) / 2;
-    const cx = origenX + celda * ((i % columnas) + 0.5);
-    const cy = origenY + celda * (fila + 0.5);
-    return { input, left: Math.round(cx - lado / 2), top: Math.round(cy - lado / 2) };
+    const { x, y } = centros[i];
+    return { input, left: Math.round(x - lado / 2), top: Math.round(y - lado / 2) };
   }));
 
   const [r, g, b] = hexARgb(fondo);

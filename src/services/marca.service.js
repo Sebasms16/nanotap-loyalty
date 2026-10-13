@@ -94,10 +94,14 @@ const fondoSellos = (negocio) => negocio.color_fondo_sellos || negocio.color_pri
 
 const estampasPropias = (negocio) => (Array.isArray(negocio.estampas_urls) ? negocio.estampas_urls : []);
 
+// Subirlo cuando cambia cómo se dibuja la tira (no solo los datos del negocio),
+// para que Google descargue la imagen nueva en vez de usar la de su caché.
+const VERSION_DIBUJO = 2; // 2: margen a los lados para que el iPhone no recorte estampas
+
 // Cambia cuando cambia algo que se ve en la tira: sirve para invalidar cachés.
 function versionTira(negocio) {
   return crypto.createHash('sha1')
-    .update([negocio.sello_url, negocio.logo_url, fondoSellos(negocio), negocio.color_secundario, negocio.sellos_para_premio,
+    .update([VERSION_DIBUJO, negocio.sello_url, negocio.logo_url, fondoSellos(negocio), negocio.color_secundario, negocio.sellos_para_premio,
       JSON.stringify(estampasPropias(negocio)), negocio.estampas_pendientes].join('|'))
     .digest('hex').slice(0, 10);
 }
