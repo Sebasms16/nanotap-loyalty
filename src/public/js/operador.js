@@ -130,6 +130,7 @@
     $('#n-sello').value = '';
     $('#n-sello-quitar').checked = false;
     mostrarMiniatura('#n-logo-actual', n?.logo_url);
+    $('#n-ocultar-nombre').checked = Boolean(n?.ocultar_nombre);
     mostrarMiniatura('#n-sello-actual', n?.sello_url);
     $('#n-sello-quitar-fila').hidden = !n?.sello_url;
     $('#n-primario').value = n?.color_primario || '#1a1a2e';
@@ -362,6 +363,8 @@
     android.style.color = textoSobre(fondo);
 
     document.querySelectorAll('.vista-tarjeta [data-nombre]').forEach((n) => { n.textContent = nombre; });
+    // En iPhone el nombre se puede ocultar; Google lo muestra siempre.
+    document.querySelector('#tarjeta-ios [data-nombre]').style.visibility = $('#n-ocultar-nombre').checked ? 'hidden' : '';
     document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => { n.textContent = premio; });
     document.querySelector('.vista-tarjeta [data-contador]').textContent = `${llenos}/${total}`;
     document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = `${llenos} / ${total}`;
@@ -466,6 +469,7 @@
       sellos_para_premio: Number($('#n-sellos').value),
       descripcion_premio: $('#n-premio').value,
       estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
+      ocultar_nombre: $('#n-ocultar-nombre').checked,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
     if ($('#n-reglas').value !== reglasAlAbrir) cuerpo.reglas = $('#n-reglas').value;

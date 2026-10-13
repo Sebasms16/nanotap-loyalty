@@ -31,7 +31,8 @@ create table if not exists negocios (
   reglas text,                               -- reglas del programa, una por línea (si es null, las sugeridas)
   estampas_urls jsonb not null default '[]', -- imagen propia de cada estampa, por posición (null = la general)
   estampas_pendientes text not null default 'gris'
-    check (estampas_pendientes in ('gris', 'ocultas')) -- gris: la imagen en gris; ocultas: círculo vacío
+    check (estampas_pendientes in ('gris', 'ocultas')), -- gris: la imagen en gris; ocultas: círculo vacío
+  ocultar_nombre boolean not null default false -- no mostrar el nombre junto al logo (Apple), si el logo ya lo trae
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -40,6 +41,7 @@ alter table negocios add column if not exists reglas text;
 alter table negocios add column if not exists estampas_urls jsonb not null default '[]';
 alter table negocios add column if not exists estampas_pendientes text not null default 'gris'
   check (estampas_pendientes in ('gris', 'ocultas'));
+alter table negocios add column if not exists ocultar_nombre boolean not null default false;
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -144,7 +146,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.sellos_para_premio, n.descripcion_premio, n.activo, n.creado_en,
        (select count(*) from clientes c where c.negocio_id = n.id)::int as total_clientes,
        (select count(*) from staff s where s.negocio_id = n.id and s.activo)::int as total_staff,
-       n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes
+       n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes,
+       n.ocultar_nombre
 from negocios n;
 
 -- =========================================================

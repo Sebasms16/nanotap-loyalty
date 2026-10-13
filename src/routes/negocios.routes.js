@@ -34,6 +34,7 @@ function datosNegocio(cuerpo, { parcial }) {
     }
     d.estampas_pendientes = cuerpo.estampas_pendientes;
   }
+  if (cuerpo.ocultar_nombre !== undefined) d.ocultar_nombre = Boolean(cuerpo.ocultar_nombre);
   if (cuerpo.sellos_para_premio !== undefined) {
     d.sellos_para_premio = v.entero(cuerpo.sellos_para_premio, 'sellos para premio', { min: 1, max: 30 });
   }
@@ -87,7 +88,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   if (!data) throw new HttpError(404, 'Negocio no encontrado.');
 
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
-    'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes'].some((k) => k in datos);
+    'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

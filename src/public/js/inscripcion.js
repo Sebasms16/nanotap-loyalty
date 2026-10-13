@@ -24,22 +24,23 @@
     }
   }
 
+  // La insignia oficial no se puede modificar: mientras se prepara el enlace se
+  // ve atenuada, y si falla se explica abajo y un toque la reintenta.
   async function prepararGoogle(clienteId) {
     const boton = $('#boton-google');
     boton.hidden = false;
     boton.disabled = true;
-    boton.textContent = 'Preparando Google Wallet…';
+    boton.setAttribute('aria-busy', 'true');
     try {
       const { url } = await api(`/api/wallet/google/clientes/${clienteId}`, { metodo: 'POST' });
-      boton.disabled = false;
-      boton.textContent = 'Guardar en Google Wallet';
       boton.onclick = () => { location.href = url; };
       mensaje($('#error-wallet'), '');
     } catch (e) {
-      boton.disabled = false;
-      boton.textContent = 'Reintentar Google Wallet';
       boton.onclick = () => prepararGoogle(clienteId);
-      mensaje($('#error-wallet'), e.message);
+      mensaje($('#error-wallet'), `${e.message} Toque el botón de Google para reintentar.`);
+    } finally {
+      boton.disabled = false;
+      boton.removeAttribute('aria-busy');
     }
   }
 

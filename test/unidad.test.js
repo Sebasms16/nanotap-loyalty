@@ -129,6 +129,8 @@ test('el .pkpass de Apple se firma e incluye pass.json, imágenes y web service'
   assert.equal(json.authenticationToken, 'a'.repeat(48));
   assert.equal(json.backgroundColor, 'rgb(18, 52, 86)');
   assert.equal(json.logoText, 'PodoSport');
+  const sinNombre = leerZip(await appleWallet.generarPass({ cliente, negocio: { ...negocio, ocultar_nombre: true }, pass }));
+  assert.equal(JSON.parse(sinNombre['pass.json'].toString('utf8')).logoText, undefined);
   assert.equal(json.storeCard.headerFields[0].value, '5/8');
   assert.equal(json.storeCard.secondaryFields[0].value, 'Café gratis');
   assert.equal(json.storeCard.secondaryFields[1].value, 3);

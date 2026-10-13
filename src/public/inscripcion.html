@@ -81,7 +81,10 @@
 
       <div class="botones" id="botones-wallet">
         <a class="boton negro bloque grande" id="boton-apple" href="#" hidden>Agregar a Apple Wallet</a>
-        <button class="boton negro bloque grande" id="boton-google" type="button" hidden disabled>Preparando Google Wallet…</button>
+        <!-- Insignia oficial de Google (guía de marca: sin modificar, alto mínimo 48 px). -->
+        <button class="insignia-wallet" id="boton-google" type="button" hidden disabled aria-busy="true">
+          <img src="/insignias/agregar-google-wallet.svg" alt="Agregar a la Billetera de Google" width="239" height="55">
+        </button>
       </div>
       <div id="error-wallet" class="mensaje error" hidden></div>
 

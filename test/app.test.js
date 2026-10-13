@@ -138,6 +138,9 @@ test('operador: login y validaciones de alta de negocio', async () => {
   assert.equal(incompleta.status, 400);
   assert.equal((await pedir('/api/operador/vista-previa/estampas', { method: 'POST' })).status, 401);
   assert.equal((await pedir('/img/qr-ejemplo.png')).status, 200);
+  const insignia = await pedir('/insignias/agregar-google-wallet.svg');
+  assert.equal(insignia.status, 200);
+  assert.match(insignia.headers.get('content-type'), /image\/svg\+xml/);
 
   // Un token de operador no sirve como staff.
   assert.equal((await pedir('/api/staff/yo', { headers: { Authorization: `Bearer ${token}` } })).status, 401);

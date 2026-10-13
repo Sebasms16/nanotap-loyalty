@@ -65,7 +65,8 @@ async function generarPass({ cliente, negocio, pass }) {
       webServiceURL: `${env.baseUrl}/api/wallet/apple`,
       organizationName: negocio.nombre,
       description: `Tarjeta de estampas ${negocio.nombre}`,
-      logoText: negocio.nombre,
+      // Sin logoText si el logo ya trae el nombre: así el logo tiene más espacio.
+      ...(negocio.ocultar_nombre ? {} : { logoText: negocio.nombre }),
       backgroundColor: rgb(fondo),
       foregroundColor: rgb(frente),
       labelColor: rgb(frente),
