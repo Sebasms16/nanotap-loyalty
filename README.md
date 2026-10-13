@@ -41,12 +41,18 @@ y ponga la URL que le da como `BASE_URL` (reinicie el servidor).
 ### Producción (Railway)
 
 El sistema está publicado en Railway, proyecto `nanotap-loyalty`:
-**https://nanotap-loyalty-production.up.railway.app**
+**https://tarjetas.nanotap.app**
+
+- **Dominio:** `nanotap.app` se compró en Cloudflare (renovación automática: si vence, las tarjetas instaladas
+  dejan de actualizarse). En su DNS, `tarjetas` es un CNAME a Railway con el proxy **apagado** (nube gris), más un
+  TXT `_railway-verify.tarjetas`; Railway emite el certificado HTTPS. La dirección original
+  `nanotap-loyalty-production.up.railway.app` sigue respondiendo: no la quite, las primeras tarjetas de prueba la usan.
 
 - **Publicar cambios:** desde esta carpeta, `railway up --ci --service nanotap-loyalty`. Sube el código (respeta
   `.railwayignore`: nunca sube `.env` ni `certs/`), lo construye con Node 24 y lo reinicia.
 - **Variables:** se administran en Railway (`railway variable set CLAVE --stdin --service nanotap-loyalty`), no
-  desde el `.env` local. En producción `BASE_URL` es la dirección de Railway y `NODE_ENV=production`.
+  desde el `.env` local. En producción `BASE_URL=https://tarjetas.nanotap.app` y `NODE_ENV=production`.
+  Cambiar `BASE_URL` no mueve las tarjetas ya instaladas: guardan la dirección con la que se crearon.
 - **Logs:** `railway logs --service nanotap-loyalty`.
 - **Pendiente:** Railway deja de leer `railway.json` el 2026-12-01. Antes de esa fecha, migrar con
   `railway config migrate --apply` y volver a agregar la regla de reinicio.
