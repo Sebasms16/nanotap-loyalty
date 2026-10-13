@@ -29,6 +29,10 @@ test('salud', async () => {
   assert.deepEqual(await r.json(), { ok: true });
   const contacto = await (await pedir('/api/contacto')).json();
   assert.match(contacto.correo, /@/);
+  // Sin base de datos (como en estas pruebas), la salud completa avisa la falla.
+  const completa = await pedir('/salud/completa');
+  assert.equal(completa.status, 503);
+  assert.deepEqual(await completa.json(), { ok: false, bd: false });
 });
 
 test('páginas públicas y de paneles', async () => {

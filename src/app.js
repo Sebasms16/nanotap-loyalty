@@ -3,6 +3,7 @@ const path = require('node:path');
 const express = require('express');
 const helmet = require('helmet');
 const env = require('./config/env');
+const supabase = require('./db/supabaseClient');
 const log = require('./utils/logger');
 const { HttpError } = require('./utils/errores');
 const { slug: validarSlug } = require('./utils/validacion');
@@ -48,6 +49,20 @@ app.use((req, res, next) => {
 // API
 // ---------------------------------------------------------------------------
 app.get('/salud', (req, res) => res.json({ ok: true }));
+// Para el monitor externo: además del servidor, comprueba que la base de datos
+// responda (si Supabase se pausa, /salud seguiría en verde). No es la verificación
+// de Railway para que una falla de la base de datos no impida desplegar.
+app.get('/salud/completa', async (req, res) => {
+  let error;
+  try {
+    ({ error } = await supabase.from('negocios').select('id', { head: true, count: 'exact' }).limit(1));
+  } catch (e) {
+    error = e;
+  }
+  if (!error) return res.json({ ok: true, bd: true });
+  log.error('la base de datos no responde', { operacion: 'salud', error });
+  res.status(503).json({ ok: false, bd: false });
+});
 // Correo de contacto de Nanotap para la página de soporte (público).
 app.get('/api/contacto', (req, res) => res.json({ correo: env.contactoPrivacidad }));
 app.use('/api/negocios', require('./routes/negocios.routes'));
