@@ -226,9 +226,9 @@ Resueltos a favor de lo más simple que cumple el requerimiento:
   producción. El correo de contacto sale de `CONTACTO_PRIVACIDAD`.
 - **Logs (RNF-07):** una línea JSON por evento, con `negocio_id`, `cliente_id` y `operacion`. Cada llamada a
   Google/APNs queda registrada con su duración y, si falla, con el detalle del error.
-- **Botones oficiales:** Apple y Google piden usar sus insignias oficiales ("Add to Apple Wallet",
-  "Add to Google Wallet"). Los botones actuales son de texto; descargue las insignias de sus guías de marca y
-  reemplácelas en `inscripcion.html` antes de salir a producción.
+- **Botones oficiales:** la inscripción usa las insignias oficiales en español, sin modificar
+  (`src/public/insignias/`): Apple es-MX (requiere aceptar el *Wallet Marketing Agreement* de Apple al
+  descargarlas) y Google es-419. Se muestran a 52 px de alto; Google pide un mínimo de 48 px.
 
 ## 7. Pruebas
 
