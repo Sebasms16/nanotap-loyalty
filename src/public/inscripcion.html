@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es-CR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Tarjeta de lealtad</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="marca">
+    <img class="logo" id="logo" alt="" hidden>
+    <h1 id="nombre-negocio">Tarjeta de lealtad</h1>
+    <p id="regla"></p>
+  </header>
+
+  <main class="contenedor">
+    <div id="error-carga" class="mensaje error" hidden></div>
+
+    <!-- Paso 1: formulario -->
+    <form id="formulario" class="tarjeta" novalidate hidden>
+      <h2>Obtenga su tarjeta digital</h2>
+      <p class="suave">Se guarda en Apple Wallet o Google Wallet. No necesita instalar ninguna app.</p>
+
+      <div class="fila">
+        <div class="campo">
+          <label for="nombre">Nombre</label>
+          <input id="nombre" name="nombre" type="text" autocomplete="given-name" required maxlength="100">
+        </div>
+        <div class="campo">
+          <label for="primer_apellido">Primer apellido</label>
+          <input id="primer_apellido" name="primer_apellido" type="text" autocomplete="family-name" required maxlength="100">
+        </div>
+      </div>
+      <div class="campo">
+        <label for="segundo_apellido">Segundo apellido <span class="opcional">(opcional)</span></label>
+        <input id="segundo_apellido" name="segundo_apellido" type="text" maxlength="100">
+      </div>
+      <div class="fila">
+        <div class="campo">
+          <label for="telefono">Teléfono</label>
+          <input id="telefono" name="telefono" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="8888 8888" required>
+        </div>
+        <div class="campo">
+          <label for="correo">Correo electrónico</label>
+          <input id="correo" name="correo" type="email" autocomplete="email" required maxlength="254">
+        </div>
+      </div>
+      <div class="fila">
+        <div class="campo">
+          <label for="fecha_nacimiento">Fecha de nacimiento <span class="opcional">(opcional)</span></label>
+          <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" autocomplete="bday">
+        </div>
+        <div class="campo">
+          <label for="identificacion">Cédula <span class="opcional">(opcional)</span></label>
+          <input id="identificacion" name="identificacion" type="text" inputmode="numeric" maxlength="30">
+        </div>
+      </div>
+
+      <details class="reglas campo" id="reglas" hidden>
+        <summary>Reglas del programa</summary>
+        <ul id="lista-reglas"></ul>
+      </details>
+
+      <label class="casilla campo">
+        <input id="acepto_terminos" name="acepto_terminos" type="checkbox" required>
+        <span>Acepto las reglas del programa y autorizo el tratamiento de mis datos personales
+          según la Ley N.º 8968, como se explica en el <a id="link-privacidad" href="#" target="_blank" rel="noopener">aviso de privacidad</a>.</span>
+      </label>
+
+      <div id="error-form" class="mensaje error" hidden></div>
+      <button class="boton bloque grande" id="enviar" type="submit">Obtener mi tarjeta</button>
+      <p class="suave centro" style="margin-top:1rem">¿Ya tiene tarjeta? <a id="link-consulta" href="#">Consulte sus sellos</a></p>
+    </form>
+
+    <!-- Paso 2: tarjeta lista -->
+    <section id="resultado" class="tarjeta centro" hidden>
+      <h2 id="saludo"></h2>
+      <p class="suave" id="subtitulo"></p>
+      <div id="sellos"></div>
+
+      <div class="botones" id="botones-wallet">
+        <a class="boton negro bloque grande" id="boton-apple" href="#" hidden>Agregar a Apple Wallet</a>
+        <button class="boton negro bloque grande" id="boton-google" type="button" hidden disabled>Preparando Google Wallet…</button>
+      </div>
+      <div id="error-wallet" class="mensaje error" hidden></div>
+
+      <div class="separador">o muestre este código en caja</div>
+      <img class="qr" id="qr" alt="Código QR de su tarjeta">
+      <p class="codigo" id="codigo"></p>
+      <p class="suave">Tip: tome una captura de pantalla por si no tiene señal en el local.</p>
+    </section>
+  </main>
+
+  <script src="/js/comun.js"></script>
+  <script src="/js/inscripcion.js"></script>
+</body>
+</html>

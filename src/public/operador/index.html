@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="es-CR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Nanotap · Operador</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <!-- Login -->
+  <main id="vista-login" class="contenedor" hidden>
+    <form id="form-login" class="tarjeta" novalidate>
+      <h1>Panel del operador</h1>
+      <div class="campo">
+        <label for="password">Contraseña</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+      </div>
+      <div id="error-login" class="mensaje error" hidden></div>
+      <button class="boton bloque" type="submit">Entrar</button>
+    </form>
+  </main>
+
+  <!-- Panel -->
+  <div id="vista-panel" hidden>
+    <div class="barra">
+      <span class="titulo">Nanotap Loyalty · Operador</span>
+      <button class="boton chico" id="salir" type="button">Salir</button>
+    </div>
+
+    <main class="contenedor-ancho">
+      <div id="error" class="mensaje error" hidden></div>
+
+      <section class="tarjeta" id="estado"></section>
+
+      <section class="tarjeta">
+        <div class="fila" style="justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+          <h2 style="margin:0">Negocios</h2>
+          <button class="boton chico" id="nuevo-negocio" type="button">+ Nuevo negocio</button>
+        </div>
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr><th>Negocio</th><th>Slug</th><th>Clientes</th><th>Staff</th><th>Premio</th><th>Estado</th><th></th></tr>
+            </thead>
+            <tbody id="tabla-negocios"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Alta / edición de negocio (RF-01) -->
+      <form id="form-negocio" class="tarjeta" novalidate hidden>
+        <h2 id="titulo-form-negocio">Nuevo negocio</h2>
+        <div class="editor">
+          <div class="editor-campos">
+            <div class="fila">
+              <div class="campo">
+                <label for="n-nombre">Nombre</label>
+                <input id="n-nombre" type="text" required maxlength="100">
+              </div>
+              <div class="campo">
+                <label for="n-slug">Slug (URL)</label>
+                <input id="n-slug" type="text" autocapitalize="none" placeholder="podosport" required>
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="n-logo">Logo del negocio</label>
+              <p class="ayuda">Cuadrado, de <strong>660 × 660 px</strong> o más, en <strong>PNG con fondo transparente</strong>.
+                Va arriba de la tarjeta; en Android se muestra dentro de un círculo (el sistema le agrega margen).</p>
+              <div class="subida">
+                <img id="n-logo-actual" class="miniatura" alt="Logo actual" hidden>
+                <input id="n-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+              </div>
+              <p class="aviso-imagen" id="n-logo-aviso" hidden></p>
+            </div>
+
+            <div class="campo">
+              <label for="n-sello">Imagen de la estampa <span class="opcional">(opcional; si no, se usa el logo)</span></label>
+              <p class="ayuda">Cuadrada, de <strong>300 × 300 px</strong> o más, en <strong>PNG con fondo transparente</strong>,
+                con el dibujo llenando el cuadro. Se ve a color cuando el cliente la obtiene y en gris cuando le falta.</p>
+              <div class="subida">
+                <img id="n-sello-actual" class="miniatura" alt="Estampa actual" hidden>
+                <input id="n-sello" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+              </div>
+              <label class="casilla" id="n-sello-quitar-fila" hidden><input id="n-sello-quitar" type="checkbox"> Quitar y usar el logo</label>
+              <p class="aviso-imagen" id="n-sello-aviso" hidden></p>
+            </div>
+
+            <div class="fila">
+              <div class="campo">
+                <label for="n-primario">Color de la tarjeta</label>
+                <input id="n-primario" type="color" value="#1a1a2e">
+              </div>
+              <div class="campo">
+                <label for="n-secundario">Color del texto</label>
+                <input id="n-secundario" type="color" value="#ffffff">
+              </div>
+              <div class="campo">
+                <label for="n-fondo-sellos">Fondo de las estampas</label>
+                <input id="n-fondo-sellos" type="color" value="#1a1a2e">
+                <label class="casilla"><input id="n-fondo-igual" type="checkbox" checked> Igual a la tarjeta</label>
+              </div>
+            </div>
+            <div class="fila">
+              <div class="campo">
+                <label for="n-sellos">Estampas para premio</label>
+                <input id="n-sellos" type="number" min="1" max="30" value="10">
+              </div>
+              <div class="campo">
+                <label for="n-premio">Descripción del premio</label>
+                <input id="n-premio" type="text" maxlength="120" value="Producto gratis">
+              </div>
+            </div>
+            <div class="campo">
+              <label for="n-reglas">Reglas del programa <span class="opcional">(una por línea; van en el reverso de la tarjeta y en la inscripción)</span></label>
+              <textarea id="n-reglas" rows="8" placeholder="Si lo deja vacío, se usan las reglas sugeridas."></textarea>
+              <button type="button" class="boton chico secundario" id="n-reglas-sugeridas">Volver a las reglas sugeridas</button>
+            </div>
+            <div id="error-negocio" class="mensaje error" hidden></div>
+            <div class="fila">
+              <button class="boton" type="submit">Guardar</button>
+              <button class="boton secundario" id="cancelar-negocio" type="button">Cancelar</button>
+            </div>
+          </div>
+
+          <!-- Vista previa de la tarjeta -->
+          <aside class="vista-tarjeta" aria-label="Vista previa de la tarjeta">
+            <div class="selector-plataforma">
+              <button type="button" id="ver-ios" aria-pressed="true">iPhone</button>
+              <button type="button" id="ver-android" aria-pressed="false">Android</button>
+            </div>
+
+            <div class="wallet-ios" id="tarjeta-ios">
+              <div class="ios-cabeza">
+                <img class="ios-logo" data-logo alt="">
+                <span class="ios-nombre" data-nombre></span>
+                <div class="ios-campo"><small>ESTAMPAS</small><b data-contador></b></div>
+              </div>
+              <img class="tira-previa" data-tira alt="Zona de estampas">
+              <div class="ios-campos">
+                <div><small>PREMIO</small><b data-premio></b></div>
+                <div class="der"><small>FALTAN</small><b data-faltan></b></div>
+              </div>
+              <div class="qr-previa"><img src="/img/qr-ejemplo.png" alt="Código QR de ejemplo"></div>
+            </div>
+
+            <div class="wallet-android" id="tarjeta-android" hidden>
+              <div class="and-cabeza"><img class="and-logo" data-logo-redondo alt=""><span data-nombre></span></div>
+              <div class="and-titulo">Tarjeta de estampas</div>
+              <div class="and-filas">
+                <div><small>Estampas</small><b data-contador-largo></b></div>
+                <div class="der"><small>Premio</small><b data-premio></b></div>
+              </div>
+              <div class="qr-previa"><img src="/img/qr-ejemplo.png" alt="Código QR de ejemplo"></div>
+              <img class="tira-previa" data-tira alt="Zona de estampas">
+            </div>
+
+            <label for="n-prev-llenos" class="suave">Estampas obtenidas en la vista previa: <output id="n-prev-llenos-valor">3</output></label>
+            <input id="n-prev-llenos" type="range" min="0" max="10" value="3">
+            <p class="suave nota-previa">Vista aproximada: Apple y Google dibujan la tarjeta final con su propio estilo.
+              En Android, Google elige solo el color del texto.</p>
+          </aside>
+        </div>
+      </form>
+
+      <!-- Detalle de un negocio -->
+      <section id="detalle" hidden>
+        <div class="tarjeta">
+          <div class="fila" style="justify-content:space-between;align-items:center">
+            <h2 id="detalle-titulo" style="margin:0"></h2>
+            <button class="boton chico secundario" id="cerrar-detalle" type="button">Cerrar</button>
+          </div>
+          <p class="suave" id="detalle-links"></p>
+          <div class="fila">
+            <button class="boton chico secundario" id="exportar-clientes" type="button">Exportar clientes (CSV)</button>
+            <button class="boton chico secundario" id="exportar-eventos" type="button">Exportar historial (CSV)</button>
+          </div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Staff</h3>
+          <div class="tabla-scroll">
+            <table>
+              <thead><tr><th>Usuario</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+              <tbody id="tabla-staff"></tbody>
+            </table>
+          </div>
+          <form id="form-staff" class="fila" style="margin-top:1rem" novalidate>
+            <div class="campo"><label for="s-usuario">Usuario</label><input id="s-usuario" type="text" autocapitalize="none" required></div>
+            <div class="campo"><label for="s-nombre">Nombre</label><input id="s-nombre" type="text"></div>
+            <div class="campo"><label for="s-password">Contraseña (mín. 8)</label><input id="s-password" type="text" autocomplete="off" required></div>
+            <button class="boton" type="submit" style="align-self:flex-end;margin-bottom:1rem">Crear usuario</button>
+          </form>
+          <div id="error-staff" class="mensaje error" hidden></div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Clientes · solicitudes de la Ley 8968</h3>
+          <p class="suave">Busque por teléfono, correo o nombre. "Eliminar" borra por completo los datos del cliente
+            y su historial, e inactiva su tarjeta en Google Wallet.</p>
+          <form id="form-buscar" class="fila" novalidate>
+            <div class="campo" style="margin:0"><input id="buscar" type="search" placeholder="8888 7777, correo o nombre"></div>
+            <button class="boton secundario" type="submit">Buscar</button>
+          </form>
+          <div class="tabla-scroll" style="margin-top:0.75rem">
+            <table>
+              <thead><tr><th>Cliente</th><th>Teléfono</th><th>Correo</th><th>Sellos</th><th>Consentimiento</th><th></th></tr></thead>
+              <tbody id="tabla-clientes"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/js/comun.js"></script>
+  <script src="/js/operador.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Nunca subir secretos ni dependencias locales (Railway instala las suyas).
+node_modules/
+.env
+.env.*
+certs/
+*.pem
+*.p12
+*.p8
+*.cer

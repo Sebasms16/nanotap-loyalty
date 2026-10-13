@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es-CR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Staff · Sumar sellos</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="barra">
+    <span class="titulo" id="titulo">Cargando…</span>
+    <button class="boton chico" id="salir" type="button">Salir</button>
+  </div>
+
+  <main class="contenedor">
+    <!-- Escáner -->
+    <section id="seccion-escaner" class="tarjeta">
+      <h2>Escanee la tarjeta del cliente</h2>
+      <div id="lector" class="lector"></div>
+      <div id="error-camara" class="mensaje aviso" hidden></div>
+      <div class="botones" style="margin-top:0.75rem">
+        <button class="boton secundario bloque" id="activar-camara" type="button" hidden>Activar cámara</button>
+      </div>
+      <div class="separador">o escriba el código</div>
+      <form id="form-manual" class="fila" novalidate>
+        <div class="campo" style="margin:0">
+          <label for="codigo" class="suave">Código de la tarjeta</label>
+          <input id="codigo" type="text" autocapitalize="characters" autocomplete="off" placeholder="POD-2026-D5471AC9">
+        </div>
+        <button class="boton secundario" type="submit" style="align-self:flex-end">Buscar</button>
+      </form>
+    </section>
+
+    <!-- Cliente encontrado -->
+    <section id="seccion-cliente" class="tarjeta centro" hidden>
+      <p class="suave codigo" id="cliente-codigo"></p>
+      <h2 id="cliente-nombre"></h2>
+      <p class="contador" id="contador"></p>
+      <div id="sellos"></div>
+      <div id="premio" class="mensaje exito" hidden></div>
+      <div class="botones">
+        <button class="boton bloque grande" id="sumar" type="button">+ Sumar sello</button>
+        <button class="boton exito bloque grande" id="canjear" type="button" hidden>Canjear premio</button>
+        <button class="boton secundario bloque" id="otro" type="button">Escanear otro cliente</button>
+      </div>
+      <p class="suave" id="canjeados" style="margin-top:1rem"></p>
+    </section>
+
+    <div id="error" class="mensaje error" hidden></div>
+
+    <section class="tarjeta">
+      <h3>Exportar datos</h3>
+      <p class="suave">Descargue un CSV para Excel o Power BI.</p>
+      <div class="fila">
+        <button class="boton secundario" id="exportar-clientes" type="button">Clientes</button>
+        <button class="boton secundario" id="exportar-eventos" type="button">Historial de sellos</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/vendor/html5-qrcode.min.js"></script>
+  <script src="/js/comun.js"></script>
+  <script src="/js/staff-panel.js"></script>
+</body>
+</html>

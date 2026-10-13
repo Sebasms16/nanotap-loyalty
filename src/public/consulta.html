@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es-CR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Consultar mis sellos</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <header class="marca">
+    <img class="logo" id="logo" alt="" hidden>
+    <h1 id="nombre-negocio">Consultar mis sellos</h1>
+    <p>Consulte cuántos sellos lleva, aunque no tenga su tarjeta a mano.</p>
+  </header>
+
+  <main class="contenedor">
+    <div id="error-carga" class="mensaje error" hidden></div>
+
+    <form id="formulario" class="tarjeta" novalidate hidden>
+      <div class="campo">
+        <label for="telefono">Su número de teléfono</label>
+        <input id="telefono" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="8888 8888" required>
+      </div>
+      <div id="error" class="mensaje error" hidden></div>
+      <button class="boton bloque" id="enviar" type="submit">Consultar</button>
+    </form>
+
+    <section id="resultado" class="tarjeta centro" hidden>
+      <h2 id="saludo"></h2>
+      <p class="contador" id="contador"></p>
+      <div id="sellos"></div>
+      <div id="estado" class="mensaje" hidden></div>
+      <p class="suave" id="canjeados"></p>
+      <p class="suave">¿Perdió su tarjeta del wallet? <a id="link-recuperar" href="#">Vuelva a inscribirse con el mismo teléfono</a>
+        y le mostraremos su tarjeta con los sellos que ya tiene.</p>
+    </section>
+  </main>
+
+  <script src="/js/comun.js"></script>
+  <script src="/js/consulta.js"></script>
+</body>
+</html>
