@@ -27,10 +27,12 @@ test('salud', async () => {
   const r = await pedir('/salud');
   assert.equal(r.status, 200);
   assert.deepEqual(await r.json(), { ok: true });
+  const contacto = await (await pedir('/api/contacto')).json();
+  assert.match(contacto.correo, /@/);
 });
 
 test('páginas públicas y de paneles', async () => {
-  for (const ruta of ['/', '/podosport/inscripcion', '/podosport/consulta', '/podosport/privacidad', '/staff/login', '/staff/panel', '/operador/']) {
+  for (const ruta of ['/', '/soporte', '/podosport/inscripcion', '/podosport/consulta', '/podosport/privacidad', '/staff/login', '/staff/panel', '/operador/']) {
     const r = await pedir(ruta);
     assert.equal(r.status, 200, ruta);
     assert.match(r.headers.get('content-type'), /text\/html/, ruta);

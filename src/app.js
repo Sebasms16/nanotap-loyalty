@@ -48,6 +48,8 @@ app.use((req, res, next) => {
 // API
 // ---------------------------------------------------------------------------
 app.get('/salud', (req, res) => res.json({ ok: true }));
+// Correo de contacto de Nanotap para la página de soporte (público).
+app.get('/api/contacto', (req, res) => res.json({ correo: env.contactoPrivacidad }));
 app.use('/api/negocios', require('./routes/negocios.routes'));
 app.use('/api/clientes', require('./routes/clientes.routes'));
 app.use('/api/staff', require('./routes/staff.routes'));

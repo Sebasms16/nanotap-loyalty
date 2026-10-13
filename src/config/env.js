@@ -73,7 +73,7 @@ module.exports = {
   supabaseServiceRoleKey: requerida('SUPABASE_SERVICE_ROLE_KEY'),
   jwtSecret,
   operadorPassword: requerida('OPERADOR_PASSWORD'),
-  contactoPrivacidad: opcional('CONTACTO_PRIVACIDAD', 'privacidad@nanotap.cr'),
+  contactoPrivacidad: opcional('CONTACTO_PRIVACIDAD', 'soporte@nanotap.app'),
   apple,
   google,
 };
