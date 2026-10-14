@@ -261,9 +261,10 @@ fieldset.campo .ayuda { margin: 0; }
 .qr-previa { display: grid; justify-items: center; padding: 0.9rem; }
 .qr-previa img { width: 6.5rem; height: 6.5rem; background: #fff; padding: 0.35rem; border-radius: 6px; image-rendering: pixelated; }
 
-.wallet-ios { border-radius: 14px; overflow: hidden; box-shadow: var(--sombra); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
+.wallet-ios { container-type: inline-size; border-radius: 14px; overflow: hidden; box-shadow: var(--sombra); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; }
 .ios-cabeza { display: flex; align-items: center; gap: 0.5rem; padding: 0.7rem 0.8rem; min-height: 3.1rem; }
-.ios-logo { max-height: 1.9rem; max-width: 5rem; object-fit: contain; }
+/* Proporciones reales del iPhone: la tarjeta mide ~343 pt y el logo cabe en 160 × 50 pt. */
+.ios-logo { max-height: 14.6cqw; max-width: 46.6cqw; object-fit: contain; }
 .ios-nombre { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ios-campo { text-align: right; }
 .wallet-ios small { display: block; font-size: 0.6rem; letter-spacing: 0.06em; font-weight: 600; opacity: 0.75; }
@@ -274,6 +275,7 @@ fieldset.campo .ayuda { margin: 0; }
 .wallet-android { border-radius: 22px; overflow: hidden; box-shadow: var(--sombra); font-family: Roboto, system-ui, sans-serif; }
 .and-cabeza { display: flex; align-items: center; gap: 0.55rem; padding: 0.9rem 1rem 0.3rem; font-size: 0.88rem; }
 .and-logo { width: 1.9rem; height: 1.9rem; border-radius: 50%; object-fit: cover; }
+.and-logo-ancho { height: 1.9rem; max-width: 60%; object-fit: contain; object-position: left; }
 .and-titulo { font-size: 1.25rem; padding: 0.3rem 1rem 0.7rem; }
 .and-filas { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0 1rem; }
 .and-filas small { display: block; font-size: 0.7rem; opacity: 0.75; }

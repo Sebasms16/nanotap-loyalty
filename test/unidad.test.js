@@ -221,6 +221,33 @@ test('sin logo, la zona de estampas usa los círculos de color', async () => {
   assert.equal(png.readUInt32BE(16), 750);
 });
 
+test('logo alargado: se detecta sin su margen y se usa a lo ancho en Apple y Google', async () => {
+  const sharp = require('sharp');
+  const estampas = require('../src/services/estampas.service');
+  // Logo de 2,5:1 dentro de un lienzo cuadrado transparente (como se suelen exportar).
+  const logo = await sharp({ create: { width: 600, height: 600, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: { create: { width: 500, height: 200, channels: 4, background: '#e53935' } }, left: 50, top: 200 }])
+    .png().toBuffer();
+  assert.ok(Math.abs(await estampas.proporcionLogo(logo) - 2.5) < 0.05);
+
+  // Google: 1280 × 400, alineado a la izquierda (el logo queda de 1000 × 400).
+  const ancho = await estampas.logoAnchoParaGoogle(logo);
+  const { data, info } = await sharp(ancho).raw().toBuffer({ resolveWithObject: true });
+  assert.deepEqual([info.width, info.height], [1280, 400]);
+  const alfa = (x, y) => data[(y * info.width + x) * 4 + 3];
+  assert.equal(alfa(10, 200), 255); // empieza a la izquierda
+  assert.equal(alfa(1270, 200), 0); // a la derecha queda transparente
+
+  const clase = googleWallet.construirClase({ ...negocio, logo_url: 'https://x/logo.png' }, { logoAncho: true });
+  assert.match(clase.wideProgramLogo.sourceUri.uri, /\/img\/negocios\/.+\/logo-ancho\.png\?v=/);
+  assert.equal(googleWallet.construirClase(negocio).wideProgramLogo, undefined);
+
+  // Apple: sin el nombre al lado del logo (el Buffer hace de URL ya descargada).
+  const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+  const zip = leerZip(await appleWallet.generarPass({ cliente, negocio: { ...negocio, logo_url: logo }, pass }));
+  assert.equal(JSON.parse(zip['pass.json'].toString('utf8')).logoText, undefined);
+});
+
 test('logo con fondo sólido: conserva su margen y redondea las esquinas', async () => {
   const sharp = require('sharp');
   const { logoEncabezado } = require('../src/services/estampas.service');

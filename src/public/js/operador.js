@@ -315,10 +315,13 @@
       try {
         await img.decode();
         const { naturalWidth: ancho, naturalHeight: alto } = img;
-        if (Math.min(ancho, alto) < MEDIDAS[tipo]) {
-          problemas.push(`La imagen mide ${ancho} × ${alto} px; se recomienda al menos ${MEDIDAS[tipo]} × ${MEDIDAS[tipo]} px para que no se vea borrosa.`);
+        // Un logo alargado se usa a lo ancho: basta con que tenga 200 px de alto.
+        const logoAlargado = tipo === 'logo' && ancho / alto >= PROPORCION_ANCHO;
+        if (logoAlargado ? alto < 200 : Math.min(ancho, alto) < MEDIDAS[tipo]) {
+          const minimo = logoAlargado ? '200 px de alto' : `${MEDIDAS[tipo]} × ${MEDIDAS[tipo]} px`;
+          problemas.push(`La imagen mide ${ancho} × ${alto} px; se recomienda al menos ${minimo} para que no se vea borrosa.`);
         }
-        if (Math.abs(ancho - alto) / Math.max(ancho, alto) > 0.1) {
+        if (!logoAlargado && Math.abs(ancho - alto) / Math.max(ancho, alto) > 0.1) {
           problemas.push(`No es cuadrada (${ancho} × ${alto} px): quedará con espacio vacío a los lados.`);
         }
       } catch {
@@ -363,8 +366,6 @@
     android.style.color = textoSobre(fondo);
 
     document.querySelectorAll('.vista-tarjeta [data-nombre]').forEach((n) => { n.textContent = nombre; });
-    // En iPhone el nombre se puede ocultar; Google lo muestra siempre.
-    document.querySelector('#tarjeta-ios [data-nombre]').style.visibility = $('#n-ocultar-nombre').checked ? 'hidden' : '';
     document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => { n.textContent = premio; });
     document.querySelector('.vista-tarjeta [data-contador]').textContent = `${llenos}/${total}`;
     document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = `${llenos} / ${total}`;
@@ -377,12 +378,60 @@
     const logo = urlLogoPrevia || editando?.logo_url || null;
     const logoIos = document.querySelector('.vista-tarjeta [data-logo]');
     logoIos.hidden = !logo;
-    if (logo) logoIos.src = logo;
+    if (logo && logoIos.getAttribute('src') !== logo) logoIos.src = logo;
+    if (!logo) logoAncho = false;
     document.querySelector('.vista-tarjeta [data-logo-redondo]').src = logo
       || `/img/icono.png?tam=120&fondo=${fondo.slice(1)}&color=${texto.slice(1)}`;
+    if (logo) document.querySelector('.vista-tarjeta [data-logo-ancho]').src = logo;
+    mostrarCabeza();
 
     clearTimeout(temporizadorTira);
     temporizadorTira = setTimeout(() => pedirTira({ total, llenos, texto }), 250);
+  }
+
+  // --- Logo alargado: mismo criterio que el servidor (estampas.PROPORCION_ANCHO) ---
+  // Se mide el dibujo sin su margen transparente: muchos logos anchos vienen
+  // dentro de un lienzo cuadrado.
+  const PROPORCION_ANCHO = 2;
+  let logoAncho = false;
+
+  function proporcionDibujo(img) {
+    const escala = Math.min(1, 200 / Math.max(img.naturalWidth, img.naturalHeight));
+    const ancho = Math.max(1, Math.round(img.naturalWidth * escala));
+    const alto = Math.max(1, Math.round(img.naturalHeight * escala));
+    const lienzo = document.createElement('canvas');
+    lienzo.width = ancho;
+    lienzo.height = alto;
+    const ctx = lienzo.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, ancho, alto);
+    const { data } = ctx.getImageData(0, 0, ancho, alto);
+    let [x0, y0, x1, y1] = [ancho, alto, -1, -1];
+    for (let y = 0; y < alto; y++) {
+      for (let x = 0; x < ancho; x++) {
+        if (data[(y * ancho + x) * 4 + 3] < 10) continue;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+        y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+    }
+    return x1 < 0 ? 1 : (x1 - x0 + 1) / (y1 - y0 + 1);
+  }
+
+  document.querySelector('.vista-tarjeta [data-logo]').addEventListener('load', (evento) => {
+    try {
+      logoAncho = proporcionDibujo(evento.currentTarget) >= PROPORCION_ANCHO;
+    } catch {
+      logoAncho = false; // imagen de otro dominio sin permiso de lectura: se asume cuadrada
+    }
+    mostrarCabeza();
+  });
+
+  // iPhone: el nombre se oculta si el negocio lo pide o si el logo es alargado.
+  // Android: un logo alargado se ve completo en lugar del círculo.
+  function mostrarCabeza() {
+    document.querySelector('#tarjeta-ios [data-nombre]').style.visibility =
+      $('#n-ocultar-nombre').checked || logoAncho ? 'hidden' : '';
+    document.querySelector('.vista-tarjeta [data-logo-redondo]').hidden = logoAncho;
+    document.querySelector('.vista-tarjeta [data-logo-ancho]').hidden = !logoAncho;
   }
 
   // Copia pequeña del archivo para la vista previa: la tira no necesita más de 300 px.

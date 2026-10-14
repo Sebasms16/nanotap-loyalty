@@ -90,6 +90,20 @@ async function cargarImagen(url, contexto = {}) {
   return buffer;
 }
 
+// Si el logo del negocio es alargado (ver estampas.PROPORCION_ANCHO). Se recuerda
+// por URL: cada logo subido tiene una URL nueva, así que no cambia sin cambiarla.
+const logosAnchos = new Map();
+async function logoEsAncho(negocio) {
+  if (!negocio.logo_url) return false;
+  if (logosAnchos.has(negocio.logo_url)) return logosAnchos.get(negocio.logo_url);
+  const logo = await cargarImagen(negocio.logo_url, { negocio_id: negocio.id });
+  if (!logo) return false; // no se pudo descargar: se vuelve a intentar la próxima vez
+  const ancho = (await estampas.proporcionLogo(logo).catch(() => 1)) >= estampas.PROPORCION_ANCHO;
+  if (logosAnchos.size >= 200) logosAnchos.delete(logosAnchos.keys().next().value);
+  logosAnchos.set(negocio.logo_url, ancho);
+  return ancho;
+}
+
 const fondoSellos = (negocio) => negocio.color_fondo_sellos || negocio.color_primario || '#1a1a2e';
 
 const estampasPropias = (negocio) => (Array.isArray(negocio.estampas_urls) ? negocio.estampas_urls : []);
@@ -145,5 +159,5 @@ async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {})
 }
 
 module.exports = {
-  subirImagen, subirEstampa, quitarEstampa, cargarImagen, tiraDelNegocio, versionTira, versionLogo, TIPOS,
+  subirImagen, subirEstampa, quitarEstampa, cargarImagen, logoEsAncho, tiraDelNegocio, versionTira, versionLogo, TIPOS,
 };

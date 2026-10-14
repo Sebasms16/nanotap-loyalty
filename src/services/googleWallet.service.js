@@ -54,12 +54,21 @@ function urlLogo(negocio) {
   return `${env.baseUrl}/img/icono.png?fondo=${sinNumeral(negocio.color_primario)}&color=${sinNumeral(negocio.color_secundario)}&tam=660`;
 }
 
-function construirClase(negocio) {
+// logoAncho: el logo es alargado. Además del logo en círculo (obligatorio), se
+// manda la versión ancha (wideProgramLogo), que Google muestra en lugar del círculo.
+function construirClase(negocio, { logoAncho = false } = {}) {
+  const descripcionLogo = texto(`Logo de ${negocio.nombre}`);
   return {
     id: idClase(negocio),
     issuerName: negocio.nombre,
     programName: 'Tarjeta de estampas',
-    programLogo: { sourceUri: { uri: urlLogo(negocio) }, contentDescription: texto(`Logo de ${negocio.nombre}`) },
+    programLogo: { sourceUri: { uri: urlLogo(negocio) }, contentDescription: descripcionLogo },
+    ...(logoAncho && negocio.logo_url ? {
+      wideProgramLogo: {
+        sourceUri: { uri: `${env.baseUrl}/img/negocios/${negocio.id}/logo-ancho.png?v=${marca.versionLogo(negocio)}` },
+        contentDescription: descripcionLogo,
+      },
+    } : {}),
     hexBackgroundColor: negocio.color_primario || '#1a1a2e',
     countryCode: 'CR',
     reviewStatus: 'UNDER_REVIEW',
@@ -107,7 +116,7 @@ function construirObjeto(cliente, negocio) {
 const clasesSincronizadas = new Map();
 
 async function asegurarClase(negocio) {
-  const clase = construirClase(negocio);
+  const clase = construirClase(negocio, { logoAncho: await marca.logoEsAncho(negocio) });
   const huella = JSON.stringify(clase);
   if (clasesSincronizadas.get(clase.id) === huella) return;
   const contexto = { negocio_id: negocio.id };

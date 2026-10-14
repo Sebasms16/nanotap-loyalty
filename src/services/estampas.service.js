@@ -107,6 +107,25 @@ async function logoListo(logo) {
   return sharp(logo).ensureAlpha().composite([{ input: mascara, blend: 'dest-in' }]).png().toBuffer();
 }
 
+// Desde 2:1 un logo se trata como alargado: casi siempre ya trae el nombre del
+// negocio, y en un círculo o junto al nombre quedaría diminuto.
+const PROPORCION_ANCHO = 2;
+
+// Proporción ancho/alto del dibujo del logo (sin su margen transparente).
+async function proporcionLogo(logo) {
+  const { width, height } = await sharp(await logoListo(logo)).metadata();
+  return width / height;
+}
+
+// Logo ancho de Google Wallet (wideProgramLogo): PNG transparente de 1280 × 400
+// (16:5, lo que pide Google), con el logo alineado a la izquierda.
+async function logoAnchoParaGoogle(logo) {
+  return sharp(await logoListo(logo))
+    .resize(1280, 400, { fit: 'contain', position: 'left', background: TRANSPARENTE })
+    .png()
+    .toBuffer();
+}
+
 // Logo para el encabezado de Apple Wallet: máximo 160x50 pt.
 async function logoEncabezado(logo, escala) {
   return sharp(await logoListo(logo))
@@ -135,4 +154,7 @@ async function iconoDesdeLogo(logo, tam, fondo) {
   return sharp(await logoParaGoogle(logo, fondo)).resize(tam, tam).png().toBuffer();
 }
 
-module.exports = { tiraConImagenes, normalizarImagen, logoEncabezado, logoParaGoogle, iconoDesdeLogo };
+module.exports = {
+  tiraConImagenes, normalizarImagen, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
+  proporcionLogo, PROPORCION_ANCHO,
+};

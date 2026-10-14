@@ -72,6 +72,15 @@ router.get('/negocios/:id/logo.png', async (req, res) => {
   enviarPng(res, await estampas.logoParaGoogle(logo, negocio.color_primario || '#1a1a2e'));
 });
 
+// Logo ancho para Google Wallet (wideProgramLogo), cuando el logo es alargado.
+router.get('/negocios/:id/logo-ancho.png', async (req, res) => {
+  if (!esUuid(req.params.id)) return res.sendStatus(404);
+  const negocio = await negocioParaImagen(req.params.id, req.query.v, marca.versionLogo);
+  const logo = negocio && await marca.cargarImagen(negocio.logo_url, { negocio_id: negocio.id });
+  if (!logo) return res.sendStatus(404);
+  enviarPng(res, await estampas.logoAnchoParaGoogle(logo));
+});
+
 // QR de muestra para la vista previa de la tarjeta en el panel del operador.
 let qrEjemplo = null;
 router.get('/qr-ejemplo.png', async (req, res) => {

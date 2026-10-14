@@ -65,8 +65,9 @@ async function generarPass({ cliente, negocio, pass }) {
       webServiceURL: `${env.baseUrl}/api/wallet/apple`,
       organizationName: negocio.nombre,
       description: `Tarjeta de estampas ${negocio.nombre}`,
-      // Sin logoText si el logo ya trae el nombre: así el logo tiene más espacio.
-      ...(negocio.ocultar_nombre ? {} : { logoText: negocio.nombre }),
+      // Sin logoText si el logo ya trae el nombre (lo indica el negocio, o el logo es
+      // alargado): así el logo usa todo el ancho en vez de compartirlo con el nombre.
+      ...(negocio.ocultar_nombre || await marca.logoEsAncho(negocio) ? {} : { logoText: negocio.nombre }),
       backgroundColor: rgb(fondo),
       foregroundColor: rgb(frente),
       labelColor: rgb(frente),

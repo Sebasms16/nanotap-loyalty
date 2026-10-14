@@ -65,15 +65,18 @@
 
             <div class="campo">
               <label for="n-logo">Logo del negocio</label>
-              <p class="ayuda">Cuadrado, de <strong>660 × 660 px</strong> o más, en <strong>PNG con fondo transparente</strong>.
-                Va arriba de la tarjeta; en Android se muestra dentro de un círculo (el sistema le agrega margen).</p>
+              <p class="ayuda">En <strong>PNG con fondo transparente</strong>, cuadrado (<strong>660 × 660 px</strong> o más) o
+                alargado (por ejemplo <strong>1280 × 400 px</strong>). Va arriba de la tarjeta. Un logo cuadrado se ve junto al
+                nombre del negocio (en Android, dentro de un círculo); uno alargado se ve a lo ancho, sin el nombre al lado en iPhone.
+                Evite logos con mucho texto pequeño: en el teléfono el logo mide menos de 1,5 cm de alto.</p>
               <div class="subida">
                 <img id="n-logo-actual" class="miniatura" alt="Logo actual" hidden>
                 <input id="n-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
               </div>
               <p class="aviso-imagen" id="n-logo-aviso" hidden></p>
               <label class="casilla"><input id="n-ocultar-nombre" type="checkbox"> Ocultar el nombre junto al logo
-                <span class="opcional">(si el logo ya lo trae; así el logo tiene más espacio. Solo en iPhone: Google siempre muestra el nombre)</span></label>
+                <span class="opcional">(si el logo ya lo trae; así el logo tiene más espacio. Con un logo alargado se oculta solo.
+                Solo en iPhone: Google siempre muestra el nombre)</span></label>
             </div>
 
             <fieldset class="campo">
@@ -158,7 +161,8 @@
 
             <div class="wallet-ios" id="tarjeta-ios">
               <div class="ios-cabeza">
-                <img class="ios-logo" data-logo alt="">
+                <!-- crossorigin: para medir el logo (Supabase Storage permite CORS). -->
+                <img class="ios-logo" data-logo alt="" crossorigin="anonymous">
                 <span class="ios-nombre" data-nombre></span>
                 <div class="ios-campo"><small>ESTAMPAS</small><b data-contador></b></div>
               </div>
@@ -171,7 +175,7 @@
             </div>
 
             <div class="wallet-android" id="tarjeta-android" hidden>
-              <div class="and-cabeza"><img class="and-logo" data-logo-redondo alt=""><span data-nombre></span></div>
+              <div class="and-cabeza"><img class="and-logo" data-logo-redondo alt=""><img class="and-logo-ancho" data-logo-ancho alt="" hidden><span data-nombre></span></div>
               <div class="and-titulo">Tarjeta de estampas</div>
               <div class="and-filas">
                 <div><small>Estampas</small><b data-contador-largo></b></div>
