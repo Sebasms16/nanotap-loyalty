@@ -6,10 +6,12 @@ const qrcode = require('./qrcode.service');
 const googleWallet = require('./googleWallet.service');
 const log = require('../utils/logger');
 const { reglasDelNegocio } = require('../utils/reglas');
+const niveles = require('./niveles.service');
 const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
 
-const CAMPOS_PUBLICOS_NEGOCIO = 'id, nombre, slug, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, reglas, activo';
+const CAMPOS_PUBLICOS_NEGOCIO = 'id, nombre, slug, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, reglas, activo, '
+  + 'niveles_activos, niveles, temporada_meses, temporada_inicio';
 
 async function negocioActivoPorSlug(slug) {
   const { data, error } = await supabase
@@ -23,7 +25,10 @@ function negocioPublico(n) {
   return {
     nombre: n.nombre, slug: n.slug, logo_url: n.logo_url,
     color_primario: n.color_primario, color_secundario: n.color_secundario,
-    sellos_para_premio: n.sellos_para_premio, descripcion_premio: n.descripcion_premio,
+    sellos_para_premio: n.sellos_para_premio,
+    // Con niveles, quien se inscribe empieza en Bronce: ve el premio de ese nivel.
+    descripcion_premio: niveles.activos(n) ? niveles.configuracion(n)[0].premio : n.descripcion_premio,
+    niveles_activos: niveles.activos(n),
     reglas: reglasDelNegocio(n),
   };
 }

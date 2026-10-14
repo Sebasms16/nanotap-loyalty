@@ -176,6 +176,8 @@ input[type="color"] { width: 3.5rem; height: 2.6rem; border: 1px solid var(--bor
 }
 .contador { font-size: 2.4rem; font-weight: 700; text-align: center; line-height: 1; }
 .contador small { font-size: 1rem; color: var(--texto-suave); font-weight: 500; }
+.nivel-cliente { margin: 0.2rem 0 0.8rem; font-size: 1.1rem; }
+.nivel-cliente small { font-size: 0.85rem; color: var(--texto-suave); }
 
 .qr { display: block; width: 12rem; max-width: 100%; margin: 0.5rem auto; image-rendering: pixelated; }
 .codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.04em; }
@@ -287,3 +289,16 @@ textarea { width: 100%; font: inherit; padding: 0.7rem 0.8rem; border: 1px solid
 .reglas { border: 1px solid var(--borde); border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.9rem; }
 .reglas summary { cursor: pointer; font-weight: 600; }
 .reglas ul { margin: 0.6rem 0 0.2rem; padding-left: 1.1rem; display: grid; gap: 0.35rem; color: var(--texto-suave); }
+
+/* Niveles por temporada (panel del operador) */
+.niveles-config { display: grid; gap: 0.5rem; }
+.tabla-niveles { display: grid; gap: 0.5rem; margin: 0.25rem 0 0.75rem; }
+.fila-nivel { display: grid; grid-template-columns: 7.5rem 8rem minmax(0, 1fr); gap: 0.5rem; align-items: center; }
+.fila-nivel.encabezado { font-size: 0.8rem; color: var(--texto-suave); font-weight: 600; }
+.fila-nivel .nombre-nivel { font-weight: 600; }
+.fila-nivel .desde-inscripcion { font-size: 0.85rem; color: var(--texto-suave); }
+@media (max-width: 36rem) {
+  .fila-nivel { grid-template-columns: 1fr 1fr; }
+  .fila-nivel .premio-nivel { grid-column: 1 / -1; }
+  .fila-nivel.encabezado { display: none; }
+}

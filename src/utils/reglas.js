@@ -1,11 +1,25 @@
 // Reglas del programa de lealtad que se muestran en el reverso de la tarjeta y
 // en la página de inscripción. Cada negocio puede tener las suyas (una por línea
 // en negocios.reglas); si no tiene, se usan estas sugeridas.
+const niveles = require('../services/niveles.service');
+
+function reglasDeNiveles(negocio) {
+  const lista = niveles.configuracion(negocio);
+  const meses = negocio.temporada_meses || niveles.MESES_POR_DEFECTO;
+  return [
+    `Al completar ${negocio.sellos_para_premio} estampas recibe el premio de su nivel:`,
+    ...lista.map((n) => (n.tarjetas === 0
+      ? `${n.emoji} ${n.nombre} (desde la inscripción): ${n.premio}.`
+      : `${n.emoji} ${n.nombre} (al canjear ${n.tarjetas} tarjetas en la temporada): ${n.premio}.`)),
+    `Cada temporada dura ${meses} ${meses === 1 ? 'mes' : 'meses'}. Al terminar, todos vuelven a Bronce; las estampas que lleve se conservan.`,
+  ];
+}
+
 function reglasSugeridas(negocio) {
   const total = negocio.sellos_para_premio;
   return [
     `Recibe una estampa por cada compra en ${negocio.nombre}, mostrando esta tarjeta al momento de pagar.`,
-    `Al completar ${total} estampas recibe: ${negocio.descripcion_premio}.`,
+    ...(niveles.activos(negocio) ? reglasDeNiveles(negocio) : [`Al completar ${total} estampas recibe: ${negocio.descripcion_premio}.`]),
     'El premio no se puede cambiar por dinero en efectivo ni por otro producto.',
     'Las estampas no tienen valor comercial y no se otorgan por compras anteriores.',
     'La tarjeta es personal: las estampas y premios no se pueden transferir a otra persona.',

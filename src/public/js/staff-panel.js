@@ -94,6 +94,17 @@
     $('#canjear').hidden = !disponible;
     reiniciarCanje();
     $('#canjeados').textContent = `Premios canjeados: ${cliente.premios_canjeados}`;
+    // Nivel de la temporada (solo si el negocio usa niveles).
+    const nivel = cliente.nivel;
+    $('#nivel').hidden = !nivel;
+    if (nivel) {
+      $('#nivel').replaceChildren(
+        el('strong', {}, `${nivel.nivel.emoji} Nivel ${nivel.nivel.nombre}`),
+        el('br'),
+        el('small', {}, nivel.siguiente
+          ? `${nivel.faltan === 1 ? 'Falta 1 tarjeta' : `Faltan ${nivel.faltan} tarjetas`} para ${nivel.siguiente.emoji} ${nivel.siguiente.nombre} · temporada hasta el ${nivel.fin}`
+          : `Nivel máximo · temporada hasta el ${nivel.fin}`));
+    }
   }
 
   function mostrarCliente(datos) {
@@ -115,11 +126,12 @@
     reanudarCamara();
   });
 
-  // Aplica la respuesta de sumar/canjear a la vista.
+  // Aplica la respuesta de sumar/canjear a la vista (trae el cliente al día, con su nivel).
   function actualizar(r) {
-    cliente.sellos_actuales = r.sellos_actuales;
-    cliente.premios_canjeados = r.premios_canjeados;
-    cliente.sellos_para_premio = r.sellos_para_premio;
+    if (r.cliente) cliente = r.cliente;
+    else Object.assign(cliente, {
+      sellos_actuales: r.sellos_actuales, premios_canjeados: r.premios_canjeados, sellos_para_premio: r.sellos_para_premio,
+    });
     pintarSellos();
   }
 
@@ -155,7 +167,8 @@
     try {
       const r = await llamar(`/api/clientes/${cliente.id}/canje`, { metodo: 'POST' });
       actualizar(r);
-      toast('Premio canjeado ✓', 'exito');
+      const nivel = r.subio_de_nivel && r.cliente?.nivel?.nivel;
+      toast(nivel ? `Premio canjeado ✓ ¡Subió a ${nivel.emoji} ${nivel.nombre}!` : 'Premio canjeado ✓', 'exito');
     } catch (e) {
       toast(e.message, 'error');
       reiniciarCanje();

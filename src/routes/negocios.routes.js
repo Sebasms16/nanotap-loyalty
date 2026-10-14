@@ -10,11 +10,42 @@ const log = require('../utils/logger');
 const v = require('../utils/validacion');
 const { aCsv } = require('../utils/csv');
 const reglas = require('../utils/reglas');
+const niveles = require('../services/niveles.service');
 const { HttpError, errorDb } = require('../utils/errores');
 const { requiereOperador, requiereStaffUOperador } = require('../middlewares/auth.middleware');
 const { limiteInscripcion } = require('../middlewares/limites.middleware');
 
 const router = express.Router();
+
+// Niveles: [{clave, tarjetas, premio}]. Bronce empieza en 0; los demás necesitan
+// cada vez más tarjetas canjeadas en la temporada.
+function validarNiveles(lista) {
+  if (lista === null) return null;
+  if (!Array.isArray(lista)) throw new HttpError(400, 'Los niveles no tienen el formato esperado.');
+  let anterior = 0;
+  return niveles.NIVELES.map((nivel) => {
+    const dado = lista.find((n) => n?.clave === nivel.clave) || {};
+    const premio = v.texto(dado.premio, `premio del nivel ${nivel.nombre}`, { max: 120 }) || '';
+    if (nivel.clave === 'bronce') return { clave: nivel.clave, tarjetas: 0, premio };
+    const tarjetas = v.entero(dado.tarjetas ?? niveles.TARJETAS_POR_DEFECTO[nivel.clave],
+      `tarjetas para ${nivel.nombre}`, { min: 1, max: 100 });
+    if (tarjetas <= anterior) {
+      throw new HttpError(400, `${nivel.nombre} debe pedir más tarjetas que el nivel anterior.`);
+    }
+    anterior = tarjetas;
+    return { clave: nivel.clave, tarjetas, premio };
+  });
+}
+
+// Fecha AAAA-MM-DD válida (puede ser futura: una temporada que todavía no empieza).
+function fechaDeTemporada(valor) {
+  const texto = String(valor);
+  const fecha = new Date(`${texto}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(texto) || Number.isNaN(fecha.getTime()) || fecha.toISOString().slice(0, 10) !== texto) {
+    throw new HttpError(400, 'La fecha de inicio de la temporada no es válida.');
+  }
+  return texto;
+}
 
 function datosNegocio(cuerpo, { parcial }) {
   const d = {};
@@ -35,6 +66,14 @@ function datosNegocio(cuerpo, { parcial }) {
     d.estampas_pendientes = cuerpo.estampas_pendientes;
   }
   if (cuerpo.ocultar_nombre !== undefined) d.ocultar_nombre = Boolean(cuerpo.ocultar_nombre);
+  if (cuerpo.niveles_activos !== undefined) d.niveles_activos = Boolean(cuerpo.niveles_activos);
+  if (cuerpo.niveles !== undefined) d.niveles = validarNiveles(cuerpo.niveles);
+  if (cuerpo.temporada_meses !== undefined) {
+    d.temporada_meses = v.entero(cuerpo.temporada_meses, 'duración de la temporada (meses)', { min: 1, max: 12 });
+  }
+  if (cuerpo.temporada_inicio !== undefined) {
+    d.temporada_inicio = cuerpo.temporada_inicio ? fechaDeTemporada(cuerpo.temporada_inicio) : null;
+  }
   if (cuerpo.sellos_para_premio !== undefined) {
     d.sellos_para_premio = v.entero(cuerpo.sellos_para_premio, 'sellos para premio', { min: 1, max: 30 });
   }
@@ -57,11 +96,10 @@ async function refrescarTarjetas(negocioId) {
 // RF-01 — alta de negocio
 router.post('/', requiereOperador, async (req, res) => {
   const datos = { ...datosNegocio(req.body, { parcial: false }), slug: v.slug(req.body.slug) };
+  if (datos.niveles_activos && !datos.temporada_inicio) datos.temporada_inicio = niveles.temporadaActual({}).clave;
   if (req.body.reglas !== undefined) {
     datos.reglas = reglas.paraGuardar(v.texto(req.body.reglas, 'reglas', { max: 3000 }), {
-      nombre: datos.nombre,
-      sellos_para_premio: datos.sellos_para_premio ?? 10,
-      descripcion_premio: datos.descripcion_premio ?? 'Producto gratis',
+      sellos_para_premio: 10, descripcion_premio: 'Producto gratis', ...datos,
     });
   }
   const { data, error } = await supabase.from('negocios').insert(datos).select().single();
@@ -76,11 +114,16 @@ router.post('/', requiereOperador, async (req, res) => {
 router.patch('/:id', requiereOperador, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
   const datos = datosNegocio(req.body, { parcial: true });
-  if (req.body.reglas !== undefined) {
+  const activaSinFecha = datos.niveles_activos && datos.temporada_inicio === undefined;
+  if (req.body.reglas !== undefined || activaSinFecha) {
     const { data: actual, error: e } = await supabase.from('negocios').select('*').eq('id', req.params.id).maybeSingle();
     if (e) throw errorDb(e, 'leer negocio');
     if (!actual) throw new HttpError(404, 'Negocio no encontrado.');
-    datos.reglas = reglas.paraGuardar(v.texto(req.body.reglas, 'reglas', { max: 3000 }), { ...actual, ...datos });
+    // Al activar los niveles sin fecha, la primera temporada empieza hoy (queda guardada).
+    if (activaSinFecha && !actual.temporada_inicio) datos.temporada_inicio = niveles.temporadaActual({}).clave;
+    if (req.body.reglas !== undefined) {
+      datos.reglas = reglas.paraGuardar(v.texto(req.body.reglas, 'reglas', { max: 3000 }), { ...actual, ...datos });
+    }
   }
   if (!Object.keys(datos).length) throw new HttpError(400, 'No hay cambios para guardar.');
   const { data, error } = await supabase.from('negocios').update(datos).eq('id', req.params.id).select().maybeSingle();
@@ -88,7 +131,8 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   if (!data) throw new HttpError(404, 'Negocio no encontrado.');
 
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
-    'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre'].some((k) => k in datos);
+    'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
+    'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

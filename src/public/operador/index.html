@@ -140,6 +140,30 @@
                 <input id="n-premio" type="text" maxlength="120" value="Producto gratis">
               </div>
             </div>
+
+            <fieldset class="campo">
+              <legend>Niveles por temporada <span class="opcional">(opcional)</span></legend>
+              <label class="casilla"><input id="n-niveles-activos" type="checkbox"> Activar niveles: 🥉 Bronce, 🥈 Plata, 🥇 Oro y 💎 Diamante</label>
+              <div id="n-niveles-config" class="niveles-config" hidden>
+                <p class="ayuda">Todos empiezan en Bronce y suben según cuántas tarjetas <strong>canjean en la temporada</strong>.
+                  Al canjear, el cliente recibe el premio de su nivel (si lo deja vacío, se usa la "Descripción del premio").
+                  Al terminar la temporada todos vuelven a Bronce; las estampas que lleven se conservan.
+                  En la tarjeta, el nivel reemplaza al contador de estampas de arriba a la derecha.</p>
+                <div class="tabla-niveles" id="n-niveles"></div>
+                <div class="fila">
+                  <div class="campo">
+                    <label for="n-temporada-meses">Duración de cada temporada</label>
+                    <select id="n-temporada-meses"></select>
+                  </div>
+                  <div class="campo">
+                    <label for="n-temporada-inicio">Inicio de la primera temporada</label>
+                    <input id="n-temporada-inicio" type="date">
+                  </div>
+                </div>
+                <p class="suave" id="n-temporada-actual"></p>
+              </div>
+            </fieldset>
+
             <div class="campo">
               <label for="n-reglas">Reglas del programa <span class="opcional">(una por línea; van en el reverso de la tarjeta y en la inscripción)</span></label>
               <textarea id="n-reglas" rows="8" placeholder="Si lo deja vacío, se usan las reglas sugeridas."></textarea>
@@ -164,7 +188,7 @@
                 <!-- crossorigin: para medir el logo (Supabase Storage permite CORS). -->
                 <img class="ios-logo" data-logo alt="" crossorigin="anonymous">
                 <span class="ios-nombre" data-nombre></span>
-                <div class="ios-campo"><small>ESTAMPAS</small><b data-contador></b></div>
+                <div class="ios-campo"><small data-etiqueta-contador>ESTAMPAS</small><b data-contador></b></div>
               </div>
               <img class="tira-previa" data-tira alt="Zona de estampas">
               <div class="ios-campos">
@@ -178,7 +202,7 @@
               <div class="and-cabeza"><img class="and-logo" data-logo-redondo alt=""><img class="and-logo-ancho" data-logo-ancho alt="" hidden><span data-nombre></span></div>
               <div class="and-titulo">Tarjeta de estampas</div>
               <div class="and-filas">
-                <div><small>Estampas</small><b data-contador-largo></b></div>
+                <div><small data-etiqueta-contador-largo>Estampas</small><b data-contador-largo></b></div>
                 <div class="der"><small>Premio</small><b data-premio></b></div>
               </div>
               <div class="qr-previa"><img src="/img/qr-ejemplo.png" alt="Código QR de ejemplo"></div>

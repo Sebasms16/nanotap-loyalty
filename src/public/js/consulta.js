@@ -23,6 +23,9 @@
         : `Le falta${faltan === 1 ? '' : 'n'} ${faltan} sello${faltan === 1 ? '' : 's'} para: ${r.descripcion_premio}.`,
         r.premio_disponible ? 'exito' : 'aviso');
       $('#canjeados').textContent = r.premios_canjeados ? `Premios canjeados: ${r.premios_canjeados}` : '';
+      // Nivel de la temporada (si el negocio usa niveles).
+      $('#nivel').hidden = !r.nivel;
+      $('#nivel').textContent = r.nivel ? r.nivel.resumen : '';
     } catch (e) {
       $('#resultado').hidden = true;
       mensaje($('#error'), e.message);

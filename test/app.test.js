@@ -125,6 +125,14 @@ test('operador: login y validaciones de alta de negocio', async () => {
   const pendientesMalo = await pedir('/api/negocios', json({ nombre: 'Café', slug: 'cafe', estampas_pendientes: 'rojo' }, token));
   assert.equal(pendientesMalo.status, 400);
 
+  // Niveles: cada nivel pide más tarjetas que el anterior; fecha y duración válidas.
+  const conNiveles = (extra) => pedir('/api/negocios', json({ nombre: 'Café', slug: 'cafe', niveles_activos: true, ...extra }, token));
+  const desordenados = await conNiveles({ niveles: [{ clave: 'plata', tarjetas: 3 }, { clave: 'oro', tarjetas: 3 }] });
+  assert.equal(desordenados.status, 400);
+  assert.match((await desordenados.json()).error, /Oro debe pedir más tarjetas/);
+  assert.equal((await conNiveles({ temporada_inicio: '2026-02-30' })).status, 400);
+  assert.equal((await conNiveles({ temporada_meses: 13 })).status, 400);
+
   // Vista previa de estampas: con imágenes sin guardar (seguidas en el cuerpo) devuelve el PNG dibujado.
   const sharp = require('sharp');
   const cuadro = (r) => sharp({ create: { width: 300, height: 300, channels: 4, background: { r, g: 0, b: 0, alpha: 1 } } })

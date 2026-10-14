@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const { walletobjects, auth } = require('@googleapis/walletobjects');
 const env = require('../config/env');
 const marca = require('./marca.service');
+const niveles = require('./niveles.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -76,10 +77,13 @@ function construirClase(negocio, { logoAncho = false } = {}) {
   };
 }
 
-function construirObjeto(cliente, negocio) {
+// estado: nivel del cliente (niveles.estadoDelCliente), null si el negocio no usa niveles.
+function construirObjeto(cliente, negocio, estado = null) {
   const meta = negocio.sellos_para_premio;
   const sellos = cliente.sellos_actuales;
   const disponible = sellos >= meta;
+  const premio = niveles.premioActual(negocio, estado);
+  const estampas = { label: 'Estampas', balance: { string: `${sellos} / ${meta}` } };
   // La imagen de estampas se genera en /img/negocios/... con el logo del negocio.
   // `v` cambia si cambia la marca, para que Google no use una versión vieja de su caché.
   const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png`
@@ -92,13 +96,17 @@ function construirObjeto(cliente, negocio) {
     accountId: cliente.codigo_qr,
     accountName: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' '),
     barcode: { type: 'QR_CODE', value: cliente.codigo_qr, alternateText: cliente.codigo_qr },
-    loyaltyPoints: { label: 'Estampas', balance: { string: `${sellos} / ${meta}` } },
-    secondaryLoyaltyPoints: { label: 'Premio', balance: { string: negocio.descripcion_premio } },
+    // Con niveles, el nivel va en el campo principal y las estampas en el secundario.
+    loyaltyPoints: estado
+      ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } }
+      : estampas,
+    secondaryLoyaltyPoints: estado ? estampas : { label: 'Premio', balance: { string: premio } },
     heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${sellos} de ${meta} estampas`) },
     textModulesData: [
       disponible
-        ? { id: 'premio', header: '¡Premio disponible!', body: `Muestre esta tarjeta para canjear: ${negocio.descripcion_premio}.` }
-        : { id: 'premio', header: 'Faltan', body: `${meta - sellos} estampa${meta - sellos === 1 ? '' : 's'} para su premio.` },
+        ? { id: 'premio', header: '¡Premio disponible!', body: `Muestre esta tarjeta para canjear: ${premio}.` }
+        : { id: 'premio', header: 'Faltan', body: `${meta - sellos} estampa${meta - sellos === 1 ? '' : 's'} para su premio: ${premio}.` },
+      ...(estado ? [{ id: 'nivel', header: 'Nivel y temporada', body: niveles.resumen(estado) }] : []),
       { id: 'canjeados', header: 'Premios canjeados', body: String(cliente.premios_canjeados) },
       { id: 'reglas', header: 'Reglas del programa', body: reglasComoTexto(negocio) },
     ],
@@ -133,7 +141,7 @@ async function asegurarClase(negocio) {
 // Crea el objeto o, si ya existe, lo actualiza. Devuelve su id.
 async function asegurarObjeto(clienteDb, negocio) {
   await asegurarClase(negocio);
-  const objeto = construirObjeto(clienteDb, negocio);
+  const objeto = construirObjeto(clienteDb, negocio, await niveles.estadoDelCliente(clienteDb, negocio));
   const contexto = { negocio_id: negocio.id, cliente_id: clienteDb.id };
   try {
     await llamar('loyaltyobject.insert', contexto, () => cliente().loyaltyobject.insert({ requestBody: objeto }));
@@ -148,7 +156,7 @@ async function asegurarObjeto(clienteDb, negocio) {
 // RF-07: refleja los sellos actuales. Si el objeto no existiera (404), lo crea.
 async function actualizarObjeto(clienteDb, negocio) {
   await asegurarClase(negocio);
-  const objeto = construirObjeto(clienteDb, negocio);
+  const objeto = construirObjeto(clienteDb, negocio, await niveles.estadoDelCliente(clienteDb, negocio));
   const contexto = { negocio_id: negocio.id, cliente_id: clienteDb.id };
   try {
     await llamar('loyaltyobject.update', contexto, () =>

@@ -8,11 +8,13 @@ const supabase = require('../db/supabaseClient');
 const env = require('../config/env');
 const googleWallet = require('./googleWallet.service');
 const apnsPush = require('./apnsPush.service');
+const niveles = require('./niveles.service');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
 const MAX_INTENTOS = 12;
 const INTERVALO_WORKER_MS = 30 * 1000;
+const INTERVALO_TEMPORADAS_MS = 10 * 60 * 1000;
 
 async function cargar(clienteId) {
   const { data, error } = await supabase
@@ -103,19 +105,52 @@ async function procesarPendientes() {
   }
 }
 
-function iniciarWorker() {
+// ---------------------------------------------------------------------------
+// Cambio de temporada: el nivel se calcula al vuelo, pero las tarjetas que ya
+// están en los teléfonos hay que refrescarlas para que muestren Bronce.
+// ---------------------------------------------------------------------------
+async function revisarTemporadas(ahora = new Date()) {
+  const { data, error } = await supabase
+    .from('negocios')
+    .select('id, temporada_meses, temporada_inicio, temporada_sincronizada')
+    .eq('niveles_activos', true);
+  if (error) throw errorDb(error, 'leer temporadas');
+
+  for (const negocio of data) {
+    const { clave } = niveles.temporadaActual(negocio, ahora);
+    if (clave === negocio.temporada_sincronizada) continue;
+    const contexto = { negocio_id: negocio.id, operacion: 'temporada', temporada: clave };
+    const { data: enCola, error: errorCola } = await supabase.rpc('encolar_sync_negocio', { p_negocio_id: negocio.id });
+    if (errorCola) {
+      log.error('no se pudieron refrescar las tarjetas por cambio de temporada', { ...contexto, error: errorDb(errorCola, 'encolar') });
+      continue; // se reintenta en la próxima revisión
+    }
+    const { error: errorMarca } = await supabase.from('negocios').update({ temporada_sincronizada: clave }).eq('id', negocio.id);
+    if (errorMarca) log.error('no se pudo marcar la temporada', { ...contexto, error: errorDb(errorMarca, 'marcar temporada') });
+    log.info('temporada nueva: tarjetas en cola', { ...contexto, tarjetas_en_cola: enCola });
+  }
+}
+
+function cadaCierto(intervalo, nombre, tarea) {
   let ocupado = false;
-  setInterval(async () => {
+  const correr = async () => {
     if (ocupado) return;
     ocupado = true;
     try {
-      await procesarPendientes();
+      await tarea();
     } catch (error) {
-      log.error('worker de wallets falló', { operacion: 'worker', error });
+      log.error(`${nombre} falló`, { operacion: 'worker', error });
     } finally {
       ocupado = false;
     }
-  }, INTERVALO_WORKER_MS).unref();
+  };
+  setInterval(correr, intervalo).unref();
+  return correr;
 }
 
-module.exports = { sincronizarCliente, iniciarWorker, procesarPendientes };
+function iniciarWorker() {
+  cadaCierto(INTERVALO_TEMPORADAS_MS, 'revisión de temporadas', revisarTemporadas)();
+  cadaCierto(INTERVALO_WORKER_MS, 'worker de wallets', procesarPendientes);
+}
+
+module.exports = { sincronizarCliente, iniciarWorker, procesarPendientes, revisarTemporadas };

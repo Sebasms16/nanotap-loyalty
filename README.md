@@ -148,6 +148,14 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   elija el negocio, **en gris tenue** o **oculta** (círculo vacío, sin revelar la imagen). Sin ninguna imagen, se
   dibujan círculos con los colores del negocio. La imagen se genera en el servidor (`services/estampas.service.js`);
   Google la descarga de `/img/negocios/:id/estampas.png`.
+- **Niveles por temporada (opcional, por negocio):** 🥉 Bronce → 🥈 Plata → 🥇 Oro → 💎 Diamante
+  (`services/niveles.service.js`). Todos empiezan en Bronce y suben según cuántas tarjetas **canjearon en la
+  temporada actual** (eventos `canje` de `sellos_eventos`): el nivel se calcula, no se guarda. Cada nivel tiene su
+  premio (vacío = el premio general); al canjear se entrega el del nivel en ese momento y el canje puede subirlo.
+  Las temporadas duran `temporada_meses` y se encadenan desde `temporada_inicio`, en hora de Costa Rica. Al
+  empezar una nueva todos vuelven a Bronce; las estampas en curso se conservan. El worker revisa cada 10 minutos si
+  cambió la temporada (`temporada_sincronizada`) y refresca las tarjetas. En Apple el nivel va arriba a la derecha
+  con un emoji (Apple no admite imágenes en esos campos) y avisa al subir; en Google va en el campo principal.
 - **Reglas del programa:** van en el reverso (Apple), en el detalle (Google) y en la página de inscripción. Hay
   reglas sugeridas (`src/utils/reglas.js`) que se ajustan solas al nombre, premio y cantidad de estampas; cada
   negocio puede tener las suyas desde el panel (una por línea).

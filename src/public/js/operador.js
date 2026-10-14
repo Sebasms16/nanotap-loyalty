@@ -140,6 +140,11 @@
     $('#n-fondo-sellos').disabled = $('#n-fondo-igual').checked;
     $('#n-sellos').value = n?.sellos_para_premio || 10;
     $('#n-premio').value = n?.descripcion_premio || 'Producto gratis';
+    $('#n-niveles-activos').checked = Boolean(n?.niveles_activos);
+    pintarNiveles(n);
+    $('#n-temporada-meses').value = String(n?.temporada_meses || 3);
+    $('#n-temporada-inicio').value = n?.temporada_inicio || primerDiaDelMes();
+    mostrarNiveles();
     $('#n-reglas').value = (n?.reglas_lista || []).join('\n');
     reglasAlAbrir = $('#n-reglas').value;
     $('#n-logo-aviso').hidden = true;
@@ -192,6 +197,96 @@
     return datos.negocio;
   }
   const subirImagen = (negocioId, tipo, archivo) => subirArchivo(`/api/negocios/${negocioId}/imagenes/${tipo}`, archivo);
+
+  // --- Niveles por temporada -----------------------------------------------------
+  // Mismos niveles y valores por defecto que el servidor (services/niveles.service.js).
+  const NIVELES = [
+    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0 },
+    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2 },
+    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4 },
+    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6 },
+  ];
+  for (let meses = 1; meses <= 12; meses++) {
+    $('#n-temporada-meses').append(el('option', { value: meses }, `${meses} ${meses === 1 ? 'mes' : 'meses'}`));
+  }
+
+  function pintarNiveles(n) {
+    const propios = Array.isArray(n?.niveles) ? n.niveles : [];
+    const filas = NIVELES.map((nivel) => {
+      const propio = propios.find((p) => p?.clave === nivel.clave) || {};
+      return el('div', { class: 'fila-nivel' },
+        el('span', { class: 'nombre-nivel' }, `${nivel.emoji} ${nivel.nombre}`),
+        nivel.clave === 'bronce'
+          ? el('span', { class: 'desde-inscripcion' }, 'Desde la inscripción')
+          : el('input', {
+            type: 'number', min: 1, max: 100, value: propio.tarjetas ?? nivel.tarjetas, 'data-tarjetas': nivel.clave,
+            'aria-label': `Tarjetas canjeadas para llegar a ${nivel.nombre}`,
+          }),
+        el('input', {
+          class: 'premio-nivel', type: 'text', maxlength: 120, value: propio.premio || '', 'data-premio-nivel': nivel.clave,
+          placeholder: 'Igual a la descripción del premio', 'aria-label': `Premio del nivel ${nivel.nombre}`,
+        }));
+    });
+    $('#n-niveles').replaceChildren(
+      el('div', { class: 'fila-nivel encabezado' },
+        el('span', {}, 'Nivel'), el('span', {}, 'Tarjetas para llegar'), el('span', {}, 'Premio de este nivel')),
+      ...filas);
+  }
+
+  const nivelesActivos = () => $('#n-niveles-activos').checked;
+  const premioDeNivel = (clave) => document.querySelector(`[data-premio-nivel="${clave}"]`)?.value.trim()
+    || $('#n-premio').value.trim() || 'Premio';
+
+  function primerDiaDelMes() {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+
+  // Misma cuenta que el servidor: temporadas de `meses` encadenadas desde `inicio`.
+  function temporadaActual(inicio, meses, hoy = new Date()) {
+    const [y, m, d] = inicio.split('-').map(Number);
+    const fecha = (k) => {
+      const total = y * 12 + (m - 1) + k;
+      const ny = Math.floor(total / 12);
+      const nm = total - ny * 12;
+      return new Date(ny, nm, Math.min(d, new Date(ny, nm + 1, 0).getDate()));
+    };
+    if (hoy < fecha(0)) return { porEmpezar: true, desde: fecha(0) };
+    let k = 0;
+    while (fecha((k + 1) * meses) <= hoy) k += 1;
+    const siguiente = fecha((k + 1) * meses);
+    return { desde: fecha(k * meses), hasta: new Date(siguiente.getFullYear(), siguiente.getMonth(), siguiente.getDate() - 1) };
+  }
+
+  function mostrarNiveles() {
+    $('#n-niveles-config').hidden = !nivelesActivos();
+    const inicio = $('#n-temporada-inicio').value;
+    const formato = (f) => f.toLocaleDateString('es-CR', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (!inicio) {
+      $('#n-temporada-actual').textContent = 'Si no elige una fecha, la primera temporada empieza hoy.';
+      return;
+    }
+    const t = temporadaActual(inicio, Number($('#n-temporada-meses').value) || 3);
+    $('#n-temporada-actual').textContent = t.porEmpezar
+      ? `La primera temporada empieza el ${formato(t.desde)}.`
+      : `Temporada actual: del ${formato(t.desde)} al ${formato(t.hasta)}. Después todos vuelven a Bronce.`;
+  }
+  $('#form-negocio').addEventListener('input', mostrarNiveles);
+
+  // Lo que se envía al guardar (solo si los niveles están activos: si no, se conserva lo anterior).
+  function datosDeNiveles() {
+    if (!nivelesActivos()) return { niveles_activos: false };
+    return {
+      niveles_activos: true,
+      niveles: NIVELES.map((nivel) => ({
+        clave: nivel.clave,
+        tarjetas: nivel.clave === 'bronce' ? 0 : Number(document.querySelector(`[data-tarjetas="${nivel.clave}"]`).value),
+        premio: document.querySelector(`[data-premio-nivel="${nivel.clave}"]`).value,
+      })),
+      temporada_meses: Number($('#n-temporada-meses').value),
+      temporada_inicio: $('#n-temporada-inicio').value || null,
+    };
+  }
 
   // --- Una imagen distinta por estampa -----------------------------------------
   // Los cambios quedan aquí hasta Guardar, como el resto del formulario.
@@ -366,9 +461,15 @@
     android.style.color = textoSobre(fondo);
 
     document.querySelectorAll('.vista-tarjeta [data-nombre]').forEach((n) => { n.textContent = nombre; });
-    document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => { n.textContent = premio; });
-    document.querySelector('.vista-tarjeta [data-contador]').textContent = `${llenos}/${total}`;
-    document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = `${llenos} / ${total}`;
+    // Con niveles, arriba a la derecha va el nivel (en la vista previa, Bronce: el inicial).
+    const conNiveles = nivelesActivos();
+    document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => {
+      n.textContent = conNiveles ? premioDeNivel('bronce') : premio;
+    });
+    document.querySelector('.vista-tarjeta [data-etiqueta-contador]').textContent = conNiveles ? 'NIVEL' : 'ESTAMPAS';
+    document.querySelector('.vista-tarjeta [data-contador]').textContent = conNiveles ? '🥉 BRONCE' : `${llenos}/${total}`;
+    document.querySelector('.vista-tarjeta [data-etiqueta-contador-largo]').textContent = conNiveles ? 'Nivel' : 'Estampas';
+    document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = conNiveles ? '🥉 Bronce' : `${llenos} / ${total}`;
     document.querySelector('.vista-tarjeta [data-faltan]').textContent = faltan === 0 ? '¡Listo!' : String(faltan);
 
     // Logo: el archivo recién elegido, o el guardado, o el ícono genérico.
@@ -519,6 +620,7 @@
       descripcion_premio: $('#n-premio').value,
       estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       ocultar_nombre: $('#n-ocultar-nombre').checked,
+      ...datosDeNiveles(),
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
     if ($('#n-reglas').value !== reglasAlAbrir) cuerpo.reglas = $('#n-reglas').value;

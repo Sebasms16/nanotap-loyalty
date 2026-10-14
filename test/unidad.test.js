@@ -92,7 +92,7 @@ test('objeto de Google Wallet refleja sellos y premio disponible', () => {
   assert.ok(objeto.heroImage.sourceUri.uri.startsWith(prefijo), objeto.heroImage.sourceUri.uri);
 
   const pocos = googleWallet.construirObjeto({ ...cliente, sellos_actuales: 3 }, negocio);
-  assert.equal(pocos.textModulesData[0].body, '5 estampas para su premio.');
+  assert.equal(pocos.textModulesData[0].body, '5 estampas para su premio: Café gratis.');
   // Cambiar la marca cambia la URL de la imagen, para que Google no reuse su caché.
   const otraMarca = googleWallet.construirObjeto(cliente, { ...negocio, color_fondo_sellos: '#ffffff' });
   assert.notEqual(otraMarca.heroImage.sourceUri.uri, objeto.heroImage.sourceUri.uri);
@@ -330,4 +330,67 @@ test('reglas del programa: sugeridas, propias y normalización al guardar', () =
   assert.equal(reglas.paraGuardar(sugeridas.map((r) => `• ${r}`).join('\n'), negocio), null);
   assert.equal(reglas.paraGuardar('Solo los martes\nUna por día', negocio), 'Solo los martes\nUna por día');
   assert.equal(reglas.reglasComoTexto({ ...negocio, reglas: 'A\nB' }), '• A\n• B');
+});
+
+test('niveles: temporadas en hora de Costa Rica y nivel según tarjetas canjeadas', () => {
+  const niveles = require('../src/services/niveles.service');
+  const t = (inicio, meses, ahora) => niveles.temporadaActual({ temporada_inicio: inicio, temporada_meses: meses }, new Date(ahora));
+  assert.equal(t('2026-01-01', 3, '2026-10-14T15:00:00Z').clave, '2026-10-01');
+  assert.equal(niveles.fechaFin(t('2026-01-01', 3, '2026-10-14T15:00:00Z')), '31 dic 2026');
+  // El 31 de enero + 4 meses cae a fin de mes, sin desbordar.
+  assert.equal(t('2026-01-31', 4, '2026-06-15T15:00:00Z').clave, '2026-05-31');
+  // Medianoche de Costa Rica = 06:00 UTC: 23:30 del 31 dic todavía es la temporada vieja.
+  assert.equal(t('2026-01-01', 3, '2027-01-01T05:30:00Z').clave, '2026-10-01');
+  assert.equal(t('2026-01-01', 3, '2027-01-01T06:30:00Z').clave, '2027-01-01');
+
+  const neg = {
+    ...negocio,
+    niveles_activos: true,
+    niveles: [{ clave: 'plata', tarjetas: 2, premio: 'Café grande' }, { clave: 'oro', tarjetas: 4, premio: '' }],
+  };
+  const temporada = t('2026-10-01', 3, '2026-10-14T15:00:00Z');
+  const nivelCon = (tarjetas) => niveles.describir(neg, tarjetas, temporada);
+  assert.equal(nivelCon(0).nivel.clave, 'bronce');
+  assert.equal(nivelCon(0).premio, 'Café gratis'); // sin premio propio: el general
+  assert.equal(nivelCon(1).faltan, 1);
+  assert.equal(nivelCon(2).nivel.clave, 'plata');
+  assert.equal(nivelCon(2).premio, 'Café grande');
+  assert.equal(nivelCon(5).nivel.clave, 'oro');
+  assert.equal(nivelCon(6).nivel.clave, 'diamante'); // diamante sin configurar: 6 por defecto
+  assert.equal(nivelCon(6).siguiente, null);
+  assert.equal(niveles.etiqueta(nivelCon(5).nivel), '🥇 ORO');
+  assert.match(niveles.resumen(nivelCon(2)), /🥈 Plata · 2 tarjetas llenas esta temporada · faltan 2 para 🥇 Oro\. La temporada termina el 31 dic 2026\./);
+
+  // Reglas sugeridas explican los niveles y la temporada.
+  const reglas = require('../src/utils/reglas');
+  const texto = reglas.reglasSugeridas({ ...neg, temporada_meses: 4 }).join('\n');
+  assert.match(texto, /🥈 Plata \(al canjear 2 tarjetas en la temporada\): Café grande/);
+  assert.match(texto, /Cada temporada dura 4 meses/);
+});
+
+test('niveles en las tarjetas: Apple arriba a la derecha y Google en el campo principal', async () => {
+  const niveles = require('../src/services/niveles.service');
+  const neg = { ...negocio, niveles_activos: true, niveles: [{ clave: 'oro', tarjetas: 4, premio: 'Desayuno' }] };
+  const estado = niveles.describir(neg, 4, niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, new Date('2026-10-14T15:00:00Z')));
+
+  const objeto = googleWallet.construirObjeto({ ...cliente, sellos_actuales: 3 }, neg, estado);
+  assert.deepEqual(objeto.loyaltyPoints, { label: 'Nivel', balance: { string: '🥇 Oro' } });
+  assert.equal(objeto.secondaryLoyaltyPoints.balance.string, '3 / 8');
+  assert.match(objeto.textModulesData[0].body, /para su premio: Desayuno\.$/);
+  assert.equal(objeto.textModulesData[1].id, 'nivel');
+
+  // Apple: el conteo de canjes va a la base de datos; aquí se reemplaza por un valor fijo.
+  const original = niveles.estadoDelCliente;
+  niveles.estadoDelCliente = async () => estado;
+  try {
+    const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+    const json = JSON.parse(leerZip(await appleWallet.generarPass({ cliente, negocio: neg, pass }))['pass.json'].toString('utf8'));
+    assert.deepEqual(json.storeCard.headerFields[0], {
+      key: 'nivel', label: 'NIVEL', value: '🥇 ORO', textAlignment: 'PKTextAlignmentRight', changeMessage: '¡Subió a nivel %@!',
+    });
+    assert.equal(json.storeCard.secondaryFields[0].value, 'Desayuno');
+    assert.ok(json.storeCard.backFields.some((c) => c.key === 'nivel_detalle'));
+  } finally {
+    niveles.estadoDelCliente = original;
+  }
 });

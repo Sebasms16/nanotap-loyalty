@@ -13,6 +13,7 @@ const env = require('../config/env');
 const imagen = require('./imagen.service');
 const estampas = require('./estampas.service');
 const marca = require('./marca.service');
+const niveles = require('./niveles.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -32,6 +33,8 @@ async function generarPass({ cliente, negocio, pass }) {
   const fondo = negocio.color_primario || '#1a1a2e';
   const frente = negocio.color_secundario || '#ffffff';
   const logo = await marca.cargarImagen(negocio.logo_url, contexto);
+  const estado = await niveles.estadoDelCliente(cliente, negocio);
+  const premio = niveles.premioActual(negocio, estado);
 
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
     marca.tiraDelNegocio(negocio, sellos, { ancho: 375 * escala, alto: 123 * escala })));
@@ -76,9 +79,19 @@ async function generarPass({ cliente, negocio, pass }) {
   );
 
   pkpass.type = 'storeCard';
-  pkpass.headerFields.push({ key: 'estampas', label: 'ESTAMPAS', value: `${sellos}/${meta}` });
+  // Arriba a la derecha: el nivel si el negocio usa niveles; si no, el contador.
+  // changeMessage solo al subir: volver a Bronce al cambiar de temporada no avisa.
+  pkpass.headerFields.push(estado
+    ? {
+      key: 'nivel',
+      label: 'NIVEL',
+      value: niveles.etiqueta(estado.nivel),
+      textAlignment: 'PKTextAlignmentRight',
+      ...(estado.nivel.clave === 'bronce' ? {} : { changeMessage: '¡Subió a nivel %@!' }),
+    }
+    : { key: 'estampas', label: 'ESTAMPAS', value: `${sellos}/${meta}` });
   pkpass.secondaryFields.push(
-    { key: 'premio', label: 'PREMIO', value: negocio.descripcion_premio },
+    { key: 'premio', label: 'PREMIO', value: premio },
     {
       key: 'faltan',
       label: 'FALTAN',
@@ -90,6 +103,7 @@ async function generarPass({ cliente, negocio, pass }) {
   );
   pkpass.backFields.push(
     { key: 'cliente', label: 'Cliente', value: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' ') },
+    ...(estado ? [{ key: 'nivel_detalle', label: 'Nivel y temporada', value: niveles.resumen(estado) }] : []),
     { key: 'canjeados', label: 'Premios canjeados', value: cliente.premios_canjeados },
     { key: 'reglas', label: 'Reglas del programa', value: reglasComoTexto(negocio) },
     { key: 'consulta', label: 'Consultar mis estampas', value: `${env.baseUrl}/${negocio.slug}/consulta` },
