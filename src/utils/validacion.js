@@ -80,6 +80,12 @@ function urlHttps(valor, campo) {
   return u;
 }
 
+// Rol de un usuario de staff: 'staff' (escanea) o 'administrador' (también ve el análisis).
+function rolStaff(valor) {
+  if (!['staff', 'administrador'].includes(valor)) throw new HttpError(400, 'El rol debe ser "staff" o "administrador".');
+  return valor;
+}
+
 function entero(valor, campo, { min, max }) {
   const n = Number(valor);
   if (!Number.isInteger(n) || n < min || n > max) {
@@ -89,5 +95,5 @@ function entero(valor, campo, { min, max }) {
 }
 
 module.exports = {
-  esUuid, texto, normalizarTelefono, telefono, correo, fecha, color, slug, urlHttps, entero,
+  esUuid, texto, normalizarTelefono, telefono, correo, fecha, color, slug, urlHttps, entero, rolStaff,
 };

@@ -32,6 +32,11 @@
 
       <section class="tarjeta" id="estado"></section>
 
+      <details class="tarjeta desplegable" id="analisis-general">
+        <summary><h2>Análisis de todos los negocios</h2></summary>
+        <div id="analisis-operador" class="contenido-desplegable"></div>
+      </details>
+
       <section class="tarjeta">
         <div class="fila" style="justify-content:space-between;align-items:center;margin-bottom:0.75rem">
           <h2 style="margin:0">Negocios</h2>
@@ -231,11 +236,17 @@
           </div>
         </div>
 
+        <details class="tarjeta desplegable" id="analisis-detalle">
+          <summary><h3>Análisis del negocio</h3></summary>
+          <p class="suave">Es lo mismo que ve el administrador del negocio en su panel.</p>
+          <div id="analisis-negocio" class="contenido-desplegable"></div>
+        </details>
+
         <div class="tarjeta">
           <h3>Staff</h3>
           <div class="tabla-scroll">
             <table>
-              <thead><tr><th>Usuario</th><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+              <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
               <tbody id="tabla-staff"></tbody>
             </table>
           </div>
@@ -243,6 +254,7 @@
             <div class="campo"><label for="s-usuario">Usuario</label><input id="s-usuario" type="text" autocapitalize="none" required></div>
             <div class="campo"><label for="s-nombre">Nombre</label><input id="s-nombre" type="text"></div>
             <div class="campo"><label for="s-password">Contraseña (mín. 8)</label><input id="s-password" type="text" autocomplete="off" required></div>
+            <label class="casilla" style="flex-basis:100%"><input id="s-administrador" type="checkbox"> Administrador: además de sumar sellos, ve el análisis del negocio (para el dueño)</label>
             <button class="boton" type="submit" style="align-self:flex-end;margin-bottom:1rem">Crear usuario</button>
           </form>
           <div id="error-staff" class="mensaje error" hidden></div>
@@ -268,6 +280,7 @@
   </div>
 
   <script src="/js/comun.js"></script>
+  <script src="/js/analisis.js"></script>
   <script src="/js/operador.js"></script>
 </body>
 </html>

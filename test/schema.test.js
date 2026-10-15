@@ -101,3 +101,57 @@ test('vista negocios_resumen cuenta clientes', async () => {
     { slug: 'cafe-b', total_clientes: 0 },
   ]);
 });
+
+test('análisis del negocio: cifras, serie, horarios, personas y aislamiento', async () => {
+  const neg = (await db.query(
+    `insert into negocios (nombre, slug, sellos_para_premio) values ('Pan C', 'pan-c', 3) returning id`
+  )).rows[0].id;
+  const ana = (await db.query(
+    `insert into staff (negocio_id, usuario, password_hash, nombre, rol) values ($1, 'ana', 'x', 'Ana', 'administrador') returning id`,
+    [neg]
+  )).rows[0].id;
+  const nuevo = (await db.query(
+    `insert into clientes (negocio_id, nombre, primer_apellido, telefono, correo, codigo_qr, creado_en, fecha_nacimiento)
+     values ($1, 'Luis', 'Mora', '81111111', 'l@x.com', 'PAN-1', now() - interval '3 days',
+             make_date(1990, extract(month from now() at time zone 'America/Costa_Rica')::int, 5)) returning id`,
+    [neg]
+  )).rows[0].id;
+  const viejo = (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr, creado_en, sellos_actuales)
+     values ($1, 'Eva', '82222222', 'e@x.com', 'PAN-2', now() - interval '80 days', 2) returning id`,
+    [neg]
+  )).rows[0].id;
+  await db.query(
+    `insert into sellos_eventos (cliente_id, staff_id, tipo, creado_en) values
+       ($1, $2, 'sello', now() - interval '2 days'), ($1, $2, 'sello', now() - interval '1 day'),
+       ($1, $2, 'canje', now() - interval '1 day'), ($3, $2, 'sello', now() - interval '60 days')`,
+    [nuevo, ana, viejo]
+  );
+
+  const r = (await db.query(
+    `select analisis_negocio($1, now() - interval '30 days', now(), 'day', now() - interval '10 days', now() + interval '80 days') as r`,
+    [neg]
+  )).rows[0].r;
+  assert.deepEqual(
+    { ...r.resumen, iphone: undefined },
+    { clientes_total: 2, clientes_nuevos: 1, clientes_activos: 1, recurrentes: 1, sellos: 2, canjes: 1,
+      premios_pendientes: 0, sin_volver: 0, iphone: undefined }
+  );
+  assert.equal(r.serie.length, 31); // un punto por día, aunque no haya movimiento
+  assert.equal(r.serie.reduce((t, p) => t + p.sellos, 0), 2);
+  assert.equal(r.horario.reduce((t, h) => t + h.sellos, 0), 2);
+  assert.deepEqual(r.staff, [{ nombre: 'Ana', usuario: 'ana', sellos: 2, canjes: 1 }]);
+  assert.deepEqual(r.mejores.map((c) => [c.nombre, c.sellos]), [['Luis Mora', 2]]);
+  assert.deepEqual(r.en_riesgo.map((c) => c.nombre), ['Eva']); // último sello hace 60 días
+  assert.deepEqual(r.cumpleanos.map((c) => [c.nombre, c.dia]), [['Luis Mora', 5]]);
+  assert.deepEqual(r.niveles, [{ canjes: 0, clientes: 1 }, { canjes: 1, clientes: 1 }]);
+  // Solo cuenta sus propios clientes (los de Café A no aparecen).
+  assert.ok(!r.mejores.some((c) => c.telefono === '88887777'));
+
+  const o = (await db.query(`select analisis_operador(now() - interval '30 days', now(), 'week') as r`)).rows[0].r;
+  const pan = o.negocios.find((n) => n.slug === 'pan-c');
+  assert.equal(pan.sellos, 2);
+  assert.equal(pan.clientes, 2);
+  assert.ok(o.resumen.sellos >= 2);
+  assert.equal(o.resumen.negocios, (await db.query(`select count(*)::int n from negocios`)).rows[0].n);
+});

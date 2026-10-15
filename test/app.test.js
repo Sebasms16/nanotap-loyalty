@@ -168,6 +168,24 @@ test('Apple web service rechaza passTypeIdentifier ajeno', async () => {
   assert.equal((await pedir('/api/wallet/apple/v1/log', json({ logs: ['prueba'] }))).status, 200);
 });
 
+test('análisis: exige sesión y el rol se valida', async () => {
+  assert.equal((await pedir('/api/staff/analisis')).status, 401);
+  assert.equal((await pedir('/api/operador/analisis')).status, 401);
+  assert.equal((await pedir('/api/operador/negocios/11111111-1111-4111-8111-111111111111/analisis')).status, 401);
+  assert.equal((await pedir('/staff/analisis')).status, 200);
+
+  const login = await pedir('/api/operador/login', json({ password: process.env.OPERADOR_PASSWORD }));
+  const { token } = await login.json();
+  const id = '11111111-1111-4111-8111-111111111111';
+  const crear = await pedir(`/api/negocios/${id}/staff`, json({ usuario: 'x', password: '12345678', rol: 'jefe' }, token));
+  assert.equal(crear.status, 400);
+  const cambiar = await pedir(`/api/staff/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ rol: 'jefe' }),
+  });
+  assert.equal(cambiar.status, 400);
+  assert.equal((await pedir(`/api/operador/negocios/no-es-uuid/analisis`, { headers: { Authorization: `Bearer ${token}` } })).status, 404);
+});
+
 test('login sin cuerpo responde 401, no 500', async () => {
   assert.equal((await pedir('/api/operador/login', { method: 'POST' })).status, 401);
   assert.equal((await pedir('/api/staff/login', { method: 'POST' })).status, 401);

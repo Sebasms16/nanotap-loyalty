@@ -5,7 +5,8 @@ const supabase = require('../db/supabaseClient');
 const log = require('../utils/logger');
 const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
-const { firmarStaff, requiereStaff, requiereOperador } = require('../middlewares/auth.middleware');
+const { firmarStaff, requiereStaff, requiereAdministrador, requiereOperador } = require('../middlewares/auth.middleware');
+const analisis = require('../services/analisis.service');
 const { limiteLogin } = require('../middlewares/limites.middleware');
 
 const router = express.Router();
@@ -31,7 +32,7 @@ router.post('/login', limiteLogin, async (req, res) => {
   }
 
   const r = await supabase
-    .from('staff').select('id, negocio_id, usuario, nombre, activo, password_hash')
+    .from('staff').select('id, negocio_id, usuario, nombre, activo, rol, password_hash')
     .eq('negocio_id', negocio.id).eq('usuario', usuario).maybeSingle();
   if (r.error) throw errorDb(r.error, 'login: buscar staff');
   const staff = r.data;
@@ -46,7 +47,7 @@ router.post('/login', limiteLogin, async (req, res) => {
   log.info('login de staff', { operacion: 'login_staff', negocio_id: negocio.id, staff_id: staff.id });
   res.json({
     token: firmarStaff(staff),
-    staff: { id: staff.id, usuario: staff.usuario, nombre: staff.nombre },
+    staff: { id: staff.id, usuario: staff.usuario, nombre: staff.nombre, rol: staff.rol },
     negocio: { slug: negocio.slug, nombre: negocio.nombre },
   });
 });
@@ -59,17 +60,25 @@ router.get('/yo', requiereStaff, async (req, res) => {
     .eq('id', req.staff.negocio_id).single();
   if (error) throw errorDb(error, 'leer negocio del staff');
   res.json({
-    staff: { id: req.staff.id, usuario: req.staff.usuario, nombre: req.staff.nombre },
+    staff: { id: req.staff.id, usuario: req.staff.usuario, nombre: req.staff.nombre, rol: req.staff.rol },
     negocio,
   });
 });
 
-// Operador: activar/desactivar, cambiar nombre o restablecer contraseña.
+// Análisis del negocio: solo el administrador (el dueño). ?periodo=7d|30d|90d|12m
+router.get('/analisis', requiereAdministrador, async (req, res) => {
+  const { data: negocio, error } = await supabase.from('negocios').select('*').eq('id', req.staff.negocio_id).single();
+  if (error) throw errorDb(error, 'leer negocio para análisis');
+  res.json(await analisis.delNegocio(negocio, req.query.periodo));
+});
+
+// Operador: activar/desactivar, cambiar nombre, rol o restablecer contraseña.
 router.patch('/:id', requiereOperador, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Usuario no encontrado.');
   const cambios = {};
   if (req.body.activo !== undefined) cambios.activo = Boolean(req.body.activo);
   if (req.body.nombre !== undefined) cambios.nombre = v.texto(req.body.nombre, 'nombre');
+  if (req.body.rol !== undefined) cambios.rol = v.rolStaff(req.body.rol);
   if (req.body.password !== undefined) {
     if (String(req.body.password).length < 8) throw new HttpError(400, 'La contraseña debe tener al menos 8 caracteres.');
     cambios.password_hash = await bcrypt.hash(String(req.body.password), 12);
@@ -77,7 +86,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   if (!Object.keys(cambios).length) throw new HttpError(400, 'No hay cambios para guardar.');
   const { data, error } = await supabase
     .from('staff').update(cambios).eq('id', req.params.id)
-    .select('id, negocio_id, usuario, nombre, activo, creado_en').maybeSingle();
+    .select('id, negocio_id, usuario, nombre, activo, rol, creado_en').maybeSingle();
   if (error) throw errorDb(error, 'editar staff');
   if (!data) throw new HttpError(404, 'Usuario no encontrado.');
   log.info('staff editado', {

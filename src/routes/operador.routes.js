@@ -5,6 +5,7 @@ const supabase = require('../db/supabaseClient');
 const env = require('../config/env');
 const appleWallet = require('../services/appleWallet.service');
 const marca = require('../services/marca.service');
+const analisis = require('../services/analisis.service');
 const { reglasDelNegocio } = require('../utils/reglas');
 const log = require('../utils/logger');
 const v = require('../utils/validacion');
@@ -46,6 +47,20 @@ router.get('/clientes', requiereOperador, async (req, res) => {
     .limit(25);
   if (error) throw errorDb(error, 'buscar clientes');
   res.json({ clientes: data });
+});
+
+// Análisis de todos los negocios (?periodo=7d|30d|90d|12m).
+router.get('/analisis', requiereOperador, async (req, res) => {
+  res.json(await analisis.delOperador(req.query.periodo));
+});
+
+// Análisis de un negocio: el mismo que ve su administrador.
+router.get('/negocios/:id/analisis', requiereOperador, async (req, res) => {
+  if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
+  const { data: negocio, error } = await supabase.from('negocios').select('*').eq('id', req.params.id).maybeSingle();
+  if (error) throw errorDb(error, 'leer negocio para análisis');
+  if (!negocio) throw new HttpError(404, 'Negocio no encontrado.');
+  res.json(await analisis.delNegocio(negocio, req.query.periodo));
 });
 
 router.get('/estado', requiereOperador, async (req, res) => {

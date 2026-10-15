@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es-CR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Análisis del negocio</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="barra">
+    <span class="titulo" id="titulo">Análisis</span>
+    <div class="fila" style="gap:0.5rem">
+      <a class="boton chico" href="/staff/panel">Volver al escáner</a>
+      <button class="boton chico" id="salir" type="button">Salir</button>
+    </div>
+  </div>
+
+  <main class="contenedor-ancho">
+    <div id="error" class="mensaje error" hidden></div>
+    <div id="analisis"></div>
+  </main>
+  <script src="/js/comun.js"></script>
+  <script src="/js/analisis.js"></script>
+  <script src="/js/staff-analisis.js"></script>
+</body>
+</html>

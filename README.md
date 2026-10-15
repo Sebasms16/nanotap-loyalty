@@ -156,6 +156,12 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   empezar una nueva todos vuelven a Bronce; las estampas en curso se conservan. El worker revisa cada 10 minutos si
   cambió la temporada (`temporada_sincronizada`) y refresca las tarjetas. En Apple el nivel va arriba a la derecha
   con un emoji (Apple no admite imágenes en esos campos) y avisa al subir; en Google va en el campo principal.
+- **Análisis de datos:** el staff con rol `administrador` (el dueño; lo asigna el operador) ve
+  `/staff/analisis`: cifras con comparación contra el período anterior, actividad en el tiempo, mapa de calor
+  día × hora, progreso hacia el premio, niveles, clientes más fieles, clientes que dejaron de venir (con teléfono
+  y WhatsApp), cumpleaños del mes y desempeño de cada colaborador. El operador ve lo mismo por negocio y un resumen
+  de todos (con alerta de negocios sin movimiento en 7 días). Los cálculos están en las funciones SQL
+  `analisis_negocio` y `analisis_operador`, agrupados en hora de Costa Rica; períodos de 7, 30 y 90 días o 12 meses.
 - **Reglas del programa:** van en el reverso (Apple), en el detalle (Google) y en la página de inscripción. Hay
   reglas sugeridas (`src/utils/reglas.js`) que se ajustan solas al nombre, premio y cantidad de estampas; cada
   negocio puede tener las suyas desde el panel (una por línea).

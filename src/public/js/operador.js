@@ -647,15 +647,44 @@
   });
 
   // --- Detalle: staff y clientes -------------------------------------------
-  function abrirDetalle(n) {
+  function abrirDetalle(n, { conAnalisis = false } = {}) {
     seleccionado = n;
     $('#tabla-clientes').replaceChildren();
     $('#buscar').value = '';
     pintarDetalle();
     cargarStaff();
+    $('#analisis-negocio').replaceChildren();
+    analisisDe = null;
+    $('#analisis-detalle').open = conAnalisis;
+    if (conAnalisis) montarAnalisisNegocio();
     $('#detalle').hidden = false;
     $('#detalle').scrollIntoView({ behavior: 'smooth' });
   }
+
+  // --- Análisis ---------------------------------------------------------------
+  // Se carga recién cuando se despliega, para no pedir datos que nadie mira.
+  let analisisDe = null; // id del negocio cuyo análisis está montado
+  function montarAnalisisNegocio() {
+    if (!seleccionado || analisisDe === seleccionado.id) return;
+    analisisDe = seleccionado.id;
+    window.NT.analisis.montar($('#analisis-negocio'), {
+      tipo: 'negocio', ruta: `/api/operador/negocios/${seleccionado.id}/analisis`, token, alNoAutorizado: salir,
+    });
+  }
+  $('#analisis-detalle').addEventListener('toggle', () => { if ($('#analisis-detalle').open) montarAnalisisNegocio(); });
+
+  let analisisGeneral = null;
+  $('#analisis-general').addEventListener('toggle', () => {
+    if (!$('#analisis-general').open) return;
+    if (analisisGeneral) return analisisGeneral.recargar();
+    analisisGeneral = window.NT.analisis.montar($('#analisis-operador'), {
+      tipo: 'operador',
+      ruta: '/api/operador/analisis',
+      token,
+      alNoAutorizado: salir,
+      alAbrirNegocio: (n) => abrirDetalle(negocios.find((x) => x.id === n.id) || n, { conAnalisis: true }),
+    });
+  });
   $('#cerrar-detalle').addEventListener('click', () => { seleccionado = null; $('#detalle').hidden = true; });
 
   function pintarDetalle() {
@@ -707,11 +736,22 @@
         cargarNegocios();
       } catch (e) { toast(e.message, 'error'); }
     });
+    // El administrador (el dueño) además ve el análisis del negocio.
+    const esAdmin = s.rol === 'administrador';
+    const rol = el('button', { class: 'boton chico secundario', type: 'button' }, esAdmin ? 'Quitar administrador' : 'Hacer administrador');
+    rol.addEventListener('click', async () => {
+      try {
+        await llamar(`/api/staff/${s.id}`, { metodo: 'PATCH', cuerpo: { rol: esAdmin ? 'staff' : 'administrador' } });
+        toast(esAdmin ? 'Ya no es administrador' : 'Ahora es administrador: ve el análisis', 'exito');
+        cargarStaff();
+      } catch (e) { toast(e.message, 'error'); }
+    });
     return el('tr', {},
       el('td', { class: 'codigo' }, s.usuario),
       el('td', {}, s.nombre || '—'),
+      el('td', {}, esAdmin ? el('span', { class: 'insignia si' }, 'Administrador') : 'Staff'),
       el('td', {}, el('span', { class: `insignia ${s.activo ? 'si' : 'no'}` }, s.activo ? 'Activo' : 'Inactivo')),
-      el('td', {}, reset, toggle));
+      el('td', {}, reset, toggle, rol));
   }
 
   $('#form-staff').addEventListener('submit', async (evento) => {
@@ -720,7 +760,10 @@
     try {
       const r = await llamar(`/api/negocios/${seleccionado.id}/staff`, {
         metodo: 'POST',
-        cuerpo: { usuario: $('#s-usuario').value, nombre: $('#s-nombre').value, password: $('#s-password').value },
+        cuerpo: {
+          usuario: $('#s-usuario').value, nombre: $('#s-nombre').value, password: $('#s-password').value,
+          rol: $('#s-administrador').checked ? 'administrador' : 'staff',
+        },
       });
       toast('Usuario creado', 'exito');
       form.reset();

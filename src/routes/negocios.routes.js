@@ -269,7 +269,7 @@ router.get('/:slug/clientes/export', requiereStaffUOperador, async (req, res) =>
 router.get('/:id/staff', requiereOperador, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
   const { data, error } = await supabase
-    .from('staff').select('id, usuario, nombre, activo, creado_en') // nunca password_hash
+    .from('staff').select('id, usuario, nombre, activo, rol, creado_en') // nunca password_hash
     .eq('negocio_id', req.params.id).order('creado_en');
   if (error) throw errorDb(error, 'listar staff');
   res.json({ staff: data });
@@ -284,8 +284,9 @@ router.post('/:id/staff', requiereOperador, async (req, res) => {
     negocio_id: req.params.id,
     usuario,
     nombre: v.texto(req.body.nombre, 'nombre'),
+    rol: req.body.rol === undefined ? 'staff' : v.rolStaff(req.body.rol),
     password_hash: await bcrypt.hash(password, 12),
-  }).select('id, usuario, nombre, activo, creado_en').single();
+  }).select('id, usuario, nombre, activo, rol, creado_en').single();
   if (error?.code === '23505') throw new HttpError(409, 'Ya existe un usuario con ese nombre en este negocio.');
   if (error?.code === '23503') throw new HttpError(404, 'Negocio no encontrado.');
   if (error) throw errorDb(error, 'crear staff');

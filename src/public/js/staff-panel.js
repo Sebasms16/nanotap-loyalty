@@ -195,6 +195,7 @@
       aplicarMarca(negocio);
       $('#titulo').textContent = negocio.nombre;
       document.title = `Staff · ${negocio.nombre}`;
+      $('#ir-analisis').hidden = r.staff.rol !== 'administrador'; // solo el dueño ve el análisis
       iniciarCamara();
     })
     .catch((e) => mensaje($('#error'), e.message));

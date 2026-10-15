@@ -143,6 +143,7 @@ function paraMostrar(estado) {
 }
 
 module.exports = {
+  instanteCR, hoyCR, sumarMeses,
   NIVELES, TARJETAS_POR_DEFECTO, MESES_POR_DEFECTO,
   activos, configuracion, temporadaActual, fechaFin, describir, estadoDelCliente, etiqueta, premioActual, resumen, paraMostrar,
 };

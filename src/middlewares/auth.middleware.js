@@ -42,7 +42,7 @@ function leerToken(req) {
 async function cargarStaff(payload) {
   const { data, error } = await supabase
     .from('staff')
-    .select('id, negocio_id, usuario, nombre, activo, negocio:negocios(id, slug, nombre, activo)')
+    .select('id, negocio_id, usuario, nombre, activo, rol, negocio:negocios(id, slug, nombre, activo)')
     .eq('id', payload.sub)
     .maybeSingle();
   if (error) throw errorDb(error, 'verificar sesión de staff');
@@ -58,6 +58,15 @@ async function requiereStaff(req, res, next) {
   const payload = leerToken(req);
   if (payload?.rol !== 'staff') return next(new HttpError(401, 'Inicie sesión para continuar.'));
   req.staff = await cargarStaff(payload);
+  next();
+}
+
+// Exige sesión de staff con rol de administrador (el dueño): ve el análisis del negocio.
+async function requiereAdministrador(req, res, next) {
+  const payload = leerToken(req);
+  if (payload?.rol !== 'staff') return next(new HttpError(401, 'Inicie sesión para continuar.'));
+  req.staff = await cargarStaff(payload);
+  if (req.staff.rol !== 'administrador') return next(new HttpError(403, 'Solo el administrador del negocio puede ver el análisis.'));
   next();
 }
 
@@ -83,5 +92,6 @@ async function requiereStaffUOperador(req, res, next) {
 }
 
 module.exports = {
-  firmarStaff, firmarOperador, passwordOperadorValida, requiereStaff, requiereOperador, requiereStaffUOperador,
+  firmarStaff, firmarOperador, passwordOperadorValida, requiereStaff, requiereAdministrador, requiereOperador,
+  requiereStaffUOperador,
 };

@@ -302,3 +302,91 @@ textarea { width: 100%; font: inherit; padding: 0.7rem 0.8rem; border: 1px solid
   .fila-nivel .premio-nivel { grid-column: 1 / -1; }
   .fila-nivel.encabezado { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Panel de análisis (js/analisis.js). Paleta fija de análisis, independiente
+   de los colores de cada negocio: una sola serie azul y una escala azul de 5
+   tonos para el mapa de calor. El texto nunca lleva el color de los datos.
+   --------------------------------------------------------------------------- */
+.viz-filtros, .viz-cuerpo {
+  --viz-serie: #2a78d6;
+  --viz-grid: #e1e0d9;
+  --viz-eje: #c3c2b7;
+  --viz-sube: #006300;
+  --viz-baja: #b42318;
+}
+.viz-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+.viz-filtros .boton[aria-pressed="true"] { background: var(--texto); color: #fff; border-color: var(--texto); }
+.viz-cuerpo { display: grid; gap: 1rem; transition: opacity 0.15s; }
+.viz-cuerpo.cargando { opacity: 0.5; }
+.viz-tarjeta { margin: 0; min-width: 0; }
+.viz-tarjeta h4 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+.viz-ayuda { margin: -0.25rem 0 1rem; font-size: 0.88rem; }
+.viz-vacio { margin: 0; }
+.viz-nota { margin: 0; font-size: 0.88rem; }
+.viz-dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; }
+
+/* Cifras */
+.viz-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 0.75rem; }
+.viz-kpi { background: var(--superficie); border-radius: var(--radio); box-shadow: var(--sombra); padding: 1rem; display: flex; flex-direction: column; gap: 0.2rem; }
+.viz-kpi-etiqueta { font-size: 0.85rem; color: var(--texto-suave); }
+.viz-kpi-valor { font-size: 1.9rem; font-weight: 650; line-height: 1.1; }
+.viz-kpi-detalle { font-size: 0.8rem; color: var(--texto-suave); }
+.viz-delta { font-size: 0.8rem; font-weight: 600; color: var(--texto-suave); }
+.viz-delta.sube { color: var(--viz-sube); }
+.viz-delta.baja { color: var(--viz-baja); }
+
+/* Columnas */
+.viz-plot { position: relative; height: 170px; margin-left: 2.4rem; }
+.viz-linea { position: absolute; left: 0; right: 0; border-top: 1px solid var(--viz-grid); }
+.viz-linea:last-child { border-top-color: var(--viz-eje); }
+.viz-linea span { position: absolute; right: calc(100% + 0.4rem); top: -0.6rem; font-size: 0.72rem; color: var(--texto-suave); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.viz-barras { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+.viz-col { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; cursor: default; outline: none; }
+.viz-col .viz-barra { width: min(24px, 70%); background: var(--viz-serie); border-radius: 4px 4px 0 0; }
+.viz-col:hover .viz-barra, .viz-col:focus-visible .viz-barra { filter: brightness(1.18); }
+.viz-col:focus-visible { box-shadow: inset 0 0 0 2px var(--viz-eje); border-radius: 4px; }
+.viz-ejex { display: flex; gap: 2px; margin: 0.35rem 0 0 2.4rem; }
+.viz-ejex span { flex: 1 1 0; font-size: 0.72rem; color: var(--texto-suave); text-align: center; white-space: nowrap; overflow: visible; }
+
+/* Barras horizontales */
+.viz-barrash { display: grid; gap: 0.5rem; }
+.viz-fila { display: grid; grid-template-columns: minmax(5.5rem, 9rem) minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; font-size: 0.9rem; }
+.viz-etiqueta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viz-pista { display: block; height: 16px; outline: none; }
+.viz-pista .viz-barra { display: block; height: 100%; min-width: 0; background: var(--viz-serie); border-radius: 0 4px 4px 0; }
+.viz-pista:hover .viz-barra, .viz-pista:focus-visible .viz-barra { filter: brightness(1.18); }
+.viz-valor { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.viz-valor small { font-weight: 400; color: var(--texto-suave); }
+
+/* Mapa de calor */
+.viz-calor-tabla { display: grid; gap: 2px; align-items: center; }
+.viz-calor-hora { font-size: 0.68rem; color: var(--texto-suave); text-align: center; white-space: nowrap; }
+.viz-calor-dia { font-size: 0.8rem; color: var(--texto-suave); }
+.viz-celda { display: block; aspect-ratio: 1; min-height: 12px; border-radius: 3px; outline: none; }
+.viz-celda.t0 { background: #f0efec; }
+.viz-celda.t1 { background: #cde2fb; }
+.viz-celda.t2 { background: #86b6ef; }
+.viz-celda.t3 { background: #3987e5; }
+.viz-celda.t4 { background: #1c5cab; }
+.viz-celda.t5 { background: #0d366b; }
+.viz-calor-tabla .viz-celda:hover, .viz-calor-tabla .viz-celda:focus-visible { box-shadow: 0 0 0 2px var(--texto); }
+.viz-leyenda { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-top: 0.6rem; font-size: 0.75rem; color: var(--texto-suave); }
+.viz-leyenda .viz-celda { width: 14px; min-height: 14px; }
+
+/* Tooltip y tabla de datos */
+.viz-tip { position: absolute; transform: translate(-50%, -100%); background: var(--texto); color: #fff; padding: 0.35rem 0.6rem; border-radius: 8px; font-size: 0.8rem; pointer-events: none; z-index: 50; display: flex; flex-direction: column; align-items: center; white-space: nowrap; box-shadow: var(--sombra); }
+.viz-tip strong { font-size: 0.95rem; }
+.viz-tip span { opacity: 0.8; }
+.viz-datos { margin-top: 0.75rem; font-size: 0.85rem; }
+.viz-datos summary { cursor: pointer; color: var(--texto-suave); }
+.viz-datos table { margin-top: 0.5rem; }
+.viz-contacto a { color: inherit; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.insignia.aviso { background: var(--aviso-fondo); color: #6b4e00; }
+.desplegable > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; }
+.desplegable > summary::-webkit-details-marker { display: none; }
+.desplegable > summary::before { content: "▸"; color: var(--texto-suave); transition: transform 0.15s; }
+.desplegable[open] > summary::before { transform: rotate(90deg); }
+.desplegable > summary h2, .desplegable > summary h3 { margin: 0; }
+.contenido-desplegable { margin-top: 1rem; }

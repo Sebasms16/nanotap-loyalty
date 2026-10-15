@@ -394,3 +394,22 @@ test('niveles en las tarjetas: Apple arriba a la derecha y Google en el campo pr
     niveles.estadoDelCliente = original;
   }
 });
+
+test('análisis: períodos en hora de Costa Rica y clientes por nivel', () => {
+  const analisis = require('../src/services/analisis.service');
+  const ahora = new Date('2026-10-14T15:00:00Z'); // 9:00 en Costa Rica
+  const treinta = analisis.rango('30d', ahora);
+  assert.equal(treinta.hasta.toISOString(), '2026-10-15T06:00:00.000Z'); // mañana a medianoche (CR)
+  assert.equal(treinta.desde.toISOString(), '2026-09-15T06:00:00.000Z'); // 30 días, hoy incluido
+  assert.equal(treinta.unidad, 'day');
+  const anio = analisis.rango('12m', ahora);
+  assert.equal(anio.desde.toISOString(), '2025-11-01T06:00:00.000Z'); // 12 meses completos
+  assert.equal(anio.hasta.toISOString(), '2026-11-01T06:00:00.000Z');
+  assert.equal(analisis.rango('otro', ahora).clave, '30d');
+
+  const niveles = require('../src/services/niveles.service');
+  const neg = { ...negocio, niveles_activos: true, niveles: [{ clave: 'plata', tarjetas: 2 }] };
+  const temporada = niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, ahora);
+  const r = analisis.clientesPorNivel(neg, [{ canjes: 0, clientes: 5 }, { canjes: 1, clientes: 2 }, { canjes: 3, clientes: 1 }], temporada);
+  assert.deepEqual(r.niveles.map((n) => [n.clave, n.clientes]), [['bronce', 7], ['plata', 1], ['oro', 0], ['diamante', 0]]);
+});
