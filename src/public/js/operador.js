@@ -762,7 +762,7 @@
         metodo: 'POST',
         cuerpo: {
           usuario: $('#s-usuario').value, nombre: $('#s-nombre').value, password: $('#s-password').value,
-          rol: $('#s-administrador').checked ? 'administrador' : 'staff',
+          rol: $('#s-rol').value,
         },
       });
       toast('Usuario creado', 'exito');

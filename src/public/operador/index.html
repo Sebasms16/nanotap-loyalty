@@ -243,7 +243,9 @@
         </details>
 
         <div class="tarjeta">
-          <h3>Staff</h3>
+          <h3>Staff y administradores</h3>
+          <p class="suave">El <strong>administrador</strong> (normalmente el dueño) hace lo mismo que el staff y además ve el
+            <strong>análisis</strong> del negocio. Elija el tipo al crear el usuario, o use "Hacer administrador" en la lista.</p>
           <div class="tabla-scroll">
             <table>
               <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
@@ -254,7 +256,13 @@
             <div class="campo"><label for="s-usuario">Usuario</label><input id="s-usuario" type="text" autocapitalize="none" required></div>
             <div class="campo"><label for="s-nombre">Nombre</label><input id="s-nombre" type="text"></div>
             <div class="campo"><label for="s-password">Contraseña (mín. 8)</label><input id="s-password" type="text" autocomplete="off" required></div>
-            <label class="casilla" style="flex-basis:100%"><input id="s-administrador" type="checkbox"> Administrador: además de sumar sellos, ve el análisis del negocio (para el dueño)</label>
+            <div class="campo">
+              <label for="s-rol">Tipo de usuario</label>
+              <select id="s-rol">
+                <option value="staff">Staff: suma sellos y canjea</option>
+                <option value="administrador">Administrador (dueño): también ve el análisis</option>
+              </select>
+            </div>
             <button class="boton" type="submit" style="align-self:flex-end;margin-bottom:1rem">Crear usuario</button>
           </form>
           <div id="error-staff" class="mensaje error" hidden></div>
