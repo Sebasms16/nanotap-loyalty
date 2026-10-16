@@ -14,6 +14,7 @@ const imagen = require('./imagen.service');
 const estampas = require('./estampas.service');
 const marca = require('./marca.service');
 const niveles = require('./niveles.service');
+const inactividad = require('./inactividad.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -35,6 +36,7 @@ async function generarPass({ cliente, negocio, pass }) {
   const logo = await marca.cargarImagen(negocio.logo_url, contexto);
   const estado = await niveles.estadoDelCliente(cliente, negocio);
   const premio = niveles.premioActual(negocio, estado);
+  const vigencia = inactividad.aviso(cliente, negocio);
 
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
     marca.tiraDelNegocio(negocio, sellos, { ancho: 375 * escala, alto: 123 * escala })));
@@ -104,6 +106,7 @@ async function generarPass({ cliente, negocio, pass }) {
   pkpass.backFields.push(
     { key: 'cliente', label: 'Cliente', value: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' ') },
     ...(estado ? [{ key: 'nivel_detalle', label: 'Nivel y temporada', value: niveles.resumen(estado) }] : []),
+    ...(vigencia ? [{ key: 'vigencia', label: 'Vigencia de las estampas', value: vigencia }] : []),
     { key: 'canjeados', label: 'Premios canjeados', value: cliente.premios_canjeados },
     { key: 'reglas', label: 'Reglas del programa', value: reglasComoTexto(negocio) },
     { key: 'consulta', label: 'Consultar mis estampas', value: `${env.baseUrl}/${negocio.slug}/consulta` },

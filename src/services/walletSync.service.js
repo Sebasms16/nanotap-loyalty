@@ -9,12 +9,14 @@ const env = require('../config/env');
 const googleWallet = require('./googleWallet.service');
 const apnsPush = require('./apnsPush.service');
 const niveles = require('./niveles.service');
+const inactividad = require('./inactividad.service');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
 const MAX_INTENTOS = 12;
 const INTERVALO_WORKER_MS = 30 * 1000;
 const INTERVALO_TEMPORADAS_MS = 10 * 60 * 1000;
+const INTERVALO_INACTIVIDAD_MS = 60 * 60 * 1000;
 
 async function cargar(clienteId) {
   const { data, error } = await supabase
@@ -150,6 +152,8 @@ function cadaCierto(intervalo, nombre, tarea) {
 
 function iniciarWorker() {
   cadaCierto(INTERVALO_TEMPORADAS_MS, 'revisión de temporadas', revisarTemporadas)();
+  // Las tarjetas reiniciadas quedan en la cola: el worker de wallets las actualiza.
+  cadaCierto(INTERVALO_INACTIVIDAD_MS, 'reinicio por inactividad', inactividad.reiniciarInactivos)();
   cadaCierto(INTERVALO_WORKER_MS, 'worker de wallets', procesarPendientes);
 }
 

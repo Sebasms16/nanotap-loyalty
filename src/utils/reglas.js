@@ -2,6 +2,7 @@
 // en la página de inscripción. Cada negocio puede tener las suyas (una por línea
 // en negocios.reglas); si no tiene, se usan estas sugeridas.
 const niveles = require('../services/niveles.service');
+const inactividad = require('../services/inactividad.service');
 
 function reglasDeNiveles(negocio) {
   const lista = niveles.configuracion(negocio);
@@ -20,6 +21,7 @@ function reglasSugeridas(negocio) {
   return [
     `Recibe una estampa por cada compra en ${negocio.nombre}, mostrando esta tarjeta al momento de pagar.`,
     ...(niveles.activos(negocio) ? reglasDeNiveles(negocio) : [`Al completar ${total} estampas recibe: ${negocio.descripcion_premio}.`]),
+    ...(inactividad.activo(negocio) ? [inactividad.regla(negocio)] : []),
     'El premio no se puede cambiar por dinero en efectivo ni por otro producto.',
     'Las estampas no tienen valor comercial y no se otorgan por compras anteriores.',
     'La tarjeta es personal: las estampas y premios no se pueden transferir a otra persona.',

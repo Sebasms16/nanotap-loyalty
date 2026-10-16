@@ -47,7 +47,7 @@ async function negocioParaImagen(id, version, calcularVersion = marca.versionTir
   const { data, error } = await supabase
     .from('negocios')
     .select('id, logo_url, sello_url, color_primario, color_secundario, color_fondo_sellos, sellos_para_premio, '
-      + 'estampas_urls, estampas_pendientes')
+      + 'estampas_urls, estampas_pendientes, fondo_estampas_url, fondo_estampas_efecto')
     .eq('id', id).maybeSingle();
   if (error) throw errorDb(error, 'leer negocio para imagen');
   if (negocios.size >= 100) negocios.delete(negocios.keys().next().value);

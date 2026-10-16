@@ -54,8 +54,9 @@ function circulo(lado, { color, fondo, lleno }) {
  * @param {string} fondo    color de fondo de la zona de estampas (#rrggbb)
  * @param {string} sello    color de los círculos de las posiciones sin imagen (#rrggbb)
  * @param {boolean} ocultas las pendientes se ven como círculo vacío en vez de la imagen en gris
+ * @param {Buffer} [base]   fondo ya armado de ancho × alto (foto de fondo); si no, el color `fondo`
  */
-async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246 }) {
+async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246, base = null }) {
   const { celda, centros } = distribuirEstampas(total, ancho, alto);
   const lado = Math.round(celda * 0.84);
 
@@ -81,10 +82,43 @@ async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#fffff
   }));
 
   const [r, g, b] = hexARgb(fondo);
-  return sharp({ create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
+  return sharp(base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
     .composite(capas)
     .png()
     .toBuffer();
+}
+
+// --- Foto de fondo de la zona de estampas -----------------------------------
+// Efectos que puede elegir el negocio para que las estampas se lean sobre la foto.
+const EFECTOS_FONDO = ['nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'];
+
+const capaDeColor = (ancho, alto, color, opacidad) => Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}">`
+  + `<rect width="${ancho}" height="${alto}" fill="${color}" fill-opacity="${opacidad}"/></svg>`);
+
+/**
+ * La foto recortada para llenar la franja (se busca la parte más llamativa) con su efecto:
+ * nitida tal cual; borrosa; oscura (velo negro); borrosa_oscura; clara (velo blanco,
+ * para estampas oscuras); byn (blanco y negro); color (en gris, teñida con `color`).
+ */
+async function fondoConFoto(foto, { ancho, alto, efecto = 'nitida', color = '#000000' }) {
+  const [r, g, b] = hexARgb(color);
+  const recorte = await sharp(foto).rotate()
+    .resize(ancho, alto, { fit: 'cover', position: sharp.strategy.attention })
+    .flatten({ background: { r, g, b } })
+    .png().toBuffer();
+  let img = sharp(recorte);
+  if (efecto === 'borrosa' || efecto === 'borrosa_oscura') img = img.blur(Math.max(1, ancho / 80));
+  if (efecto === 'byn' || efecto === 'color') img = img.grayscale();
+  const velo = {
+    oscura: ['#000000', 0.45], borrosa_oscura: ['#000000', 0.4], clara: ['#ffffff', 0.5], color: [color, 0.6],
+  }[efecto];
+  // El velo va en un segundo paso, sobre la foto ya borrosa o en gris (así no
+  // depende del orden en que sharp aplica las operaciones de un mismo paso).
+  if (!velo) return img.png().toBuffer();
+  return sharp(await img.png().toBuffer())
+    .composite([{ input: capaDeColor(ancho, alto, ...velo) }])
+    .png().toBuffer();
 }
 
 // Normaliza una imagen subida por el operador: valida, limita a 660 px y la pasa a PNG.
@@ -92,6 +126,17 @@ async function normalizarImagen(buffer) {
   const meta = await sharp(buffer).metadata(); // lanza si no es una imagen
   if (!meta.width || !meta.height) throw new Error('imagen sin dimensiones');
   return sharp(buffer).rotate().resize(660, 660, { fit: 'inside', withoutEnlargement: true }).png().toBuffer();
+}
+
+// Foto de fondo: hasta 1600 px y en JPG (en PNG una foto pesa varias veces más).
+// 1600 px alcanza para la franja más grande (la de iPhone @3x mide 1125 px).
+async function normalizarFoto(buffer) {
+  const meta = await sharp(buffer).metadata(); // lanza si no es una imagen
+  if (!meta.width || !meta.height) throw new Error('imagen sin dimensiones');
+  return sharp(buffer).rotate().resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 86, mozjpeg: true })
+    .toBuffer();
 }
 
 // Logo listo para la tarjeta. Con fondo transparente se le quita el margen para
@@ -155,6 +200,6 @@ async function iconoDesdeLogo(logo, tam, fondo) {
 }
 
 module.exports = {
-  tiraConImagenes, normalizarImagen, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
+  tiraConImagenes, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
   proporcionLogo, PROPORCION_ANCHO,
 };

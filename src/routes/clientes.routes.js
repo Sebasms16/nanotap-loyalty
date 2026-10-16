@@ -5,6 +5,7 @@ const supabase = require('../db/supabaseClient');
 const clientes = require('../services/clientes.service');
 const sellos = require('../services/sellos.service');
 const niveles = require('../services/niveles.service');
+const inactividad = require('../services/inactividad.service');
 const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
 const { requiereStaff, requiereOperador } = require('../middlewares/auth.middleware');
@@ -20,7 +21,7 @@ router.get('/consulta', limiteConsulta, async (req, res) => {
   const telefono = v.telefono(req.query.telefono);
   const { data, error } = await supabase
     .from('clientes')
-    .select('id, nombre, sellos_actuales, premios_canjeados')
+    .select('id, nombre, sellos_actuales, premios_canjeados, ultima_actividad')
     .eq('negocio_id', negocio.id)
     .eq('telefono', telefono)
     .maybeSingle();
@@ -35,6 +36,7 @@ router.get('/consulta', limiteConsulta, async (req, res) => {
     descripcion_premio: niveles.premioActual(negocio, estado),
     premio_disponible: data.sellos_actuales >= negocio.sellos_para_premio,
     nivel: niveles.paraMostrar(estado),
+    vigencia: inactividad.aviso(data, negocio),
   });
 });
 

@@ -52,6 +52,23 @@
         </div>
       </section>
 
+      <!-- Suscripciones: lo que paga cada negocio -->
+      <section class="tarjeta" id="pagos">
+        <h2>Suscripciones y pagos</h2>
+        <p class="suave">Anote cuándo empezó el período pagado y el plan: el vencimiento se calcula solo
+          (6 meses el semestral, 12 el anual). <span class="insignia no">Rojo</span> falta menos de un mes o ya venció,
+          <span class="insignia aviso">amarillo</span> menos de dos meses, <span class="insignia si">verde</span> más.
+          Cuando paguen el período siguiente, use «Renovar»: el nuevo período empieza el día en que vence el actual.</p>
+        <div class="tabla-scroll">
+          <table>
+            <thead>
+              <tr><th>Negocio</th><th>Plan</th><th>Inicio del período</th><th>Vence</th><th>Falta</th><th></th></tr>
+            </thead>
+            <tbody id="tabla-pagos"></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- Alta / edición de negocio (RF-01) -->
       <form id="form-negocio" class="tarjeta" novalidate hidden>
         <h2 id="titulo-form-negocio">Nuevo negocio</h2>
@@ -135,6 +152,31 @@
                 <label class="casilla"><input id="n-fondo-igual" type="checkbox" checked> Igual a la tarjeta</label>
               </div>
             </div>
+
+            <div class="campo">
+              <label for="n-fondo-foto">Foto de fondo de las estampas <span class="opcional">(opcional; va en lugar del color de fondo)</span></label>
+              <p class="ayuda">Una foto <strong>horizontal</strong>, de <strong>1500 × 500 px</strong> o más (JPG o PNG). Se recorta
+                para llenar la franja de las estampas, buscando la parte más llamativa. Elija un efecto para que las estampas
+                se lean bien encima: con una foto con mucho detalle, «Borrosa» u «Oscura» suelen verse mejor.</p>
+              <div class="subida">
+                <img id="n-fondo-actual" class="miniatura foto" alt="Foto de fondo actual" hidden>
+                <input id="n-fondo-foto" type="file" accept="image/png,image/jpeg,image/webp">
+              </div>
+              <label class="casilla" id="n-fondo-quitar-fila" hidden><input id="n-fondo-quitar" type="checkbox"> Quitar la foto y usar el color</label>
+              <div class="campo" id="n-fondo-efecto-campo" hidden>
+                <label for="n-fondo-efecto">Efecto de la foto</label>
+                <select id="n-fondo-efecto">
+                  <option value="nitida">Nítida (tal cual)</option>
+                  <option value="borrosa">Borrosa</option>
+                  <option value="oscura">Un poco oscura</option>
+                  <option value="borrosa_oscura">Borrosa y oscura</option>
+                  <option value="clara">Aclarada (para estampas oscuras)</option>
+                  <option value="byn">Blanco y negro</option>
+                  <option value="color">Teñida con el color del fondo de las estampas</option>
+                </select>
+              </div>
+              <p class="aviso-imagen" id="n-fondo-aviso" hidden></p>
+            </div>
             <div class="fila">
               <div class="campo">
                 <label for="n-sellos">Estampas para premio</label>
@@ -166,6 +208,23 @@
                   </div>
                 </div>
                 <p class="suave" id="n-temporada-actual"></p>
+              </div>
+            </fieldset>
+
+            <fieldset class="campo">
+              <legend>Reinicio por inactividad <span class="opcional">(opcional)</span></legend>
+              <label class="casilla"><input id="n-inactividad-activa" type="checkbox"> Reiniciar la tarjeta si el cliente deja de venir</label>
+              <div id="n-inactividad-config" hidden>
+                <div class="fila">
+                  <div class="campo">
+                    <label for="n-inactividad-dias">Días sin recibir estampas</label>
+                    <input id="n-inactividad-dias" type="number" min="1" max="3650" value="90">
+                  </div>
+                </div>
+                <p class="suave" id="n-inactividad-resumen"></p>
+                <p class="ayuda">Si pasan esos días sin que el cliente reciba una estampa ni canjee, sus estampas vuelven a cero
+                  (también las de un premio que no canjeó). El reverso de la tarjeta y la consulta de saldo le muestran la fecha
+                  límite, y las reglas sugeridas lo explican. Si usa reglas propias, agregue una línea que lo diga.</p>
               </div>
             </fieldset>
 

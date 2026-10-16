@@ -158,6 +158,28 @@ test('operador: login y validaciones de alta de negocio', async () => {
     assert.match(insignia.headers.get('content-type'), /image\/svg\+xml/);
   }
 
+  // Reinicio por inactividad, foto de fondo y suscripción: se validan antes de tocar la BD.
+  const negocioCon = (extra) => pedir('/api/negocios', json({ nombre: 'Café', slug: 'cafe', ...extra }, token));
+  assert.equal((await negocioCon({ inactividad_dias: 0 })).status, 400);
+  assert.equal((await negocioCon({ inactividad_dias: 4000 })).status, 400);
+  assert.equal((await negocioCon({ fondo_estampas_efecto: 'neon' })).status, 400);
+  assert.equal((await negocioCon({ suscripcion_plan: 'mensual' })).status, 400);
+  const fechaMala = await negocioCon({ suscripcion_inicio: '2026-13-01' });
+  assert.equal(fechaMala.status, 400);
+  assert.match((await fechaMala.json()).error, /inicio de la suscripción/);
+  assert.equal((await subir(token, 'x', 'image/jpeg', 'fondo')).status, 415);
+
+  // Vista previa con una foto de fondo sin guardar: la esquina es la foto (verde), no el color.
+  const fotoVerde = await sharp({ create: { width: 900, height: 300, channels: 3, background: { r: 0, g: 200, b: 0 } } }).jpeg().toBuffer();
+  const conFoto = await pedir(`/api/operador/vista-previa/estampas?total=4&llenos=1&fondo=000000&efecto=nitida&partes=fondo:${fotoVerde.length}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+    body: fotoVerde,
+  });
+  assert.equal(conFoto.status, 200);
+  const esquina = await sharp(Buffer.from(await conFoto.arrayBuffer())).extract({ left: 2, top: 2, width: 1, height: 1 }).raw().toBuffer();
+  assert.ok(esquina[1] > 180 && esquina[0] < 30, `esquina ${[...esquina]}`);
+
   // Un token de operador no sirve como staff.
   assert.equal((await pedir('/api/staff/yo', { headers: { Authorization: `Bearer ${token}` } })).status, 401);
 });

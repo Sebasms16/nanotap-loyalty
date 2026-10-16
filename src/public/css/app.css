@@ -390,3 +390,7 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .desplegable[open] > summary::before { transform: rotate(90deg); }
 .desplegable > summary h2, .desplegable > summary h3 { margin: 0; }
 .contenido-desplegable { margin-top: 1rem; }
+
+/* Foto de fondo de las estampas (operador): miniatura horizontal */
+.miniatura.foto { width: 9rem; object-fit: cover; }
+#tabla-pagos select, #tabla-pagos input[type="date"] { margin: 0; min-width: 8.5rem; }

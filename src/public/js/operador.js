@@ -87,6 +87,7 @@
     baseUrl = r.base_url || baseUrl;
     $('#tabla-negocios').replaceChildren(...(negocios.length ? negocios.map(filaNegocio)
       : [el('tr', {}, el('td', { colspan: 7, class: 'suave' }, 'Todavía no hay negocios. Cree el primero.'))]));
+    pintarPagos();
     if (seleccionado) {
       seleccionado = negocios.find((n) => n.id === seleccionado.id) || null;
       if (seleccionado) pintarDetalle();
@@ -115,6 +116,81 @@
         toggle));
   }
 
+  // --- Suscripciones y pagos ---------------------------------------------------
+  // Las fechas son días (AAAA-MM-DD), sin hora: se cuentan en días del calendario local.
+  const DIA_MS = 24 * 60 * 60 * 1000;
+  const diaDe = (texto) => {
+    const [y, m, d] = texto.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const hoySinHora = () => {
+    const h = new Date();
+    return new Date(h.getFullYear(), h.getMonth(), h.getDate());
+  };
+  // Suma (o resta) meses sin desbordar: el 31 de marzo menos 1 mes es el 28 de febrero.
+  const sumarMeses = (f, meses) => new Date(f.getFullYear(), f.getMonth() + meses,
+    Math.min(f.getDate(), new Date(f.getFullYear(), f.getMonth() + meses + 1, 0).getDate()));
+  const diaCorto = (texto) => diaDe(texto).toLocaleDateString('es-CR', { day: 'numeric', month: 'short', year: 'numeric' });
+  const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+  // Rojo: falta menos de un mes (o ya venció). Amarillo: menos de dos. Verde: más.
+  function cuentaRegresiva(vence) {
+    const hoy = hoySinHora();
+    const fin = diaDe(vence);
+    const dias = Math.round((fin - hoy) / DIA_MS);
+    if (dias < 0) return { color: 'no', texto: `Venció hace ${plural(-dias, 'día', 'días')}` };
+    if (dias === 0) return { color: 'no', texto: 'Vence hoy' };
+    const color = hoy >= sumarMeses(fin, -1) ? 'no' : hoy >= sumarMeses(fin, -2) ? 'aviso' : 'si';
+    let meses = 0;
+    while (sumarMeses(hoy, meses + 1) <= fin) meses += 1;
+    const resto = Math.round((fin - sumarMeses(hoy, meses)) / DIA_MS);
+    const partes = [meses && plural(meses, 'mes', 'meses'), resto && plural(resto, 'día', 'días')].filter(Boolean);
+    return { color, texto: partes.join(' y '), dias };
+  }
+
+  function pintarPagos() {
+    // Primero los que vencen antes; los que no tienen suscripción anotada, al final.
+    const orden = [...negocios].sort((a, b) => (a.suscripcion_vence || '9999').localeCompare(b.suscripcion_vence || '9999')
+      || a.nombre.localeCompare(b.nombre));
+    $('#tabla-pagos').replaceChildren(...(orden.length ? orden.map(filaPago)
+      : [el('tr', {}, el('td', { colspan: 6, class: 'suave' }, 'Todavía no hay negocios.'))]));
+  }
+
+  function filaPago(n) {
+    const guardar = async (cuerpo, aviso) => {
+      try {
+        await llamar(`/api/negocios/${n.id}`, { metodo: 'PATCH', cuerpo });
+        toast(aviso, 'exito');
+      } catch (e) { toast(e.message, 'error'); }
+      await cargarNegocios(); // con error, vuelve a mostrar lo guardado
+    };
+    const plan = el('select', { 'aria-label': `Plan de ${n.nombre}` },
+      el('option', { value: '' }, 'Sin plan'), el('option', { value: 'semestral' }, 'Semestral'), el('option', { value: 'anual' }, 'Anual'));
+    plan.value = n.suscripcion_plan || '';
+    plan.addEventListener('change', () => guardar({ suscripcion_plan: plan.value || null }, 'Plan guardado'));
+    const inicio = el('input', { type: 'date', value: n.suscripcion_inicio || '', 'aria-label': `Inicio del período de ${n.nombre}` });
+    inicio.addEventListener('change', () => guardar({ suscripcion_inicio: inicio.value || null }, 'Fecha guardada'));
+
+    let falta;
+    if (n.suscripcion_vence) {
+      const cuenta = cuentaRegresiva(n.suscripcion_vence);
+      falta = el('td', {}, el('span', { class: `insignia ${cuenta.color}` }, cuenta.texto),
+        cuenta.dias > 31 ? el('span', { class: 'suave' }, ` (${cuenta.dias} días)`) : null);
+    } else {
+      falta = el('td', { class: 'suave' }, n.suscripcion_plan ? 'Falta la fecha' : n.suscripcion_inicio ? 'Falta el plan' : '—');
+    }
+    return el('tr', {},
+      el('td', {}, el('strong', {}, n.nombre), n.activo ? null : el('span', { class: 'suave' }, ' (inactivo)')),
+      el('td', {}, plan),
+      el('td', {}, inicio),
+      el('td', {}, n.suscripcion_vence ? diaCorto(n.suscripcion_vence) : '—'),
+      falta,
+      el('td', {}, n.suscripcion_vence
+        ? botonConfirmar('Renovar', `Confirmar: desde el ${diaCorto(n.suscripcion_vence)}`,
+          () => guardar({ suscripcion_inicio: n.suscripcion_vence }, `Renovado: nuevo período desde el ${diaCorto(n.suscripcion_vence)}`), '')
+        : null));
+  }
+
   function mostrarMiniatura(selector, url) {
     $(selector).hidden = !url;
     if (url) $(selector).src = url;
@@ -138,6 +214,16 @@
     $('#n-fondo-igual').checked = !n?.color_fondo_sellos;
     $('#n-fondo-sellos').value = n?.color_fondo_sellos || n?.color_primario || '#1a1a2e';
     $('#n-fondo-sellos').disabled = $('#n-fondo-igual').checked;
+    $('#n-fondo-foto').value = '';
+    $('#n-fondo-quitar').checked = false;
+    mostrarMiniatura('#n-fondo-actual', n?.fondo_estampas_url);
+    $('#n-fondo-quitar-fila').hidden = !n?.fondo_estampas_url;
+    $('#n-fondo-efecto').value = n?.fondo_estampas_efecto || 'nitida';
+    $('#n-fondo-aviso').hidden = true;
+    mostrarFondo();
+    $('#n-inactividad-activa').checked = Boolean(n?.inactividad_dias);
+    $('#n-inactividad-dias').value = n?.inactividad_dias || 90;
+    mostrarInactividad();
     $('#n-sellos').value = n?.sellos_para_premio || 10;
     $('#n-premio').value = n?.descripcion_premio || 'Producto gratis';
     $('#n-niveles-activos').checked = Boolean(n?.niveles_activos);
@@ -287,6 +373,55 @@
       temporada_inicio: $('#n-temporada-inicio').value || null,
     };
   }
+
+  // --- Reinicio por inactividad --------------------------------------------------
+  const diasInactividad = () => Math.min(3650, Math.max(1, Math.round(Number($('#n-inactividad-dias').value) || 90)));
+
+  function mostrarInactividad() {
+    const activa = $('#n-inactividad-activa').checked;
+    $('#n-inactividad-config').hidden = !activa;
+    if (!activa) return;
+    const dias = diasInactividad();
+    const limite = new Date(Date.now() + dias * 24 * 60 * 60 * 1000)
+      .toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const aprox = dias >= 60 ? ` (unos ${Math.round(dias / 30)} meses)` : '';
+    $('#n-inactividad-resumen').textContent = `${dias} días${aprox}: si un cliente recibe hoy una estampa y no vuelve, `
+      + `sus estampas vuelven a cero el ${limite}.`;
+  }
+  $('#form-negocio').addEventListener('input', mostrarInactividad);
+
+  // --- Foto de fondo de las estampas ----------------------------------------------
+  // El efecto solo se elige si va a haber foto (la nueva o la guardada que no se quita).
+  function mostrarFondo() {
+    const hayFoto = Boolean($('#n-fondo-foto').files[0] || (editando?.fondo_estampas_url && !$('#n-fondo-quitar').checked));
+    $('#n-fondo-efecto-campo').hidden = !hayFoto;
+  }
+  $('#form-negocio').addEventListener('input', mostrarFondo);
+
+  // Avisa (sin bloquear) si la foto es chica o no es horizontal.
+  async function revisarFoto() {
+    const archivo = $('#n-fondo-foto').files[0];
+    const aviso = $('#n-fondo-aviso');
+    aviso.hidden = true;
+    if (!archivo) return;
+    const url = URL.createObjectURL(archivo);
+    const problemas = [];
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const { naturalWidth: ancho, naturalHeight: alto } = img;
+      if (ancho < 1000) problemas.push(`La foto mide ${ancho} × ${alto} px; con menos de 1000 px de ancho se verá borrosa en el iPhone.`);
+      if (ancho / alto < 1.5) problemas.push('No es horizontal: se recortará bastante arriba y abajo.');
+    } catch {
+      problemas.push('No se pudo leer la foto. Pruebe con un JPG o PNG.');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    aviso.textContent = problemas.join(' ');
+    aviso.hidden = !problemas.length;
+  }
+  $('#n-fondo-foto').addEventListener('change', () => { revisarFoto(); mostrarFondo(); actualizarVistaPrevia(); });
 
   // --- Una imagen distinta por estampa -----------------------------------------
   // Los cambios quedan aquí hasta Guardar, como el resto del formulario.
@@ -535,9 +670,10 @@
     document.querySelector('.vista-tarjeta [data-logo-ancho]').hidden = !logoAncho;
   }
 
-  // Copia pequeña del archivo para la vista previa: la tira no necesita más de 300 px.
+  // Copia pequeña del archivo para la vista previa: a una estampa le bastan 300 px;
+  // la foto de fondo ocupa toda la franja (750 px) y va en JPG.
   const reducidas = new WeakMap();
-  function reducir(archivo) {
+  function reducir(archivo, { maximo = 300, tipo = 'image/png' } = {}) {
     if (!reducidas.has(archivo)) {
       reducidas.set(archivo, (async () => {
         const url = URL.createObjectURL(archivo);
@@ -547,12 +683,12 @@
           await img.decode();
           const ancho = img.naturalWidth || 300;
           const alto = img.naturalHeight || 300;
-          const escala = Math.min(1, 300 / Math.max(ancho, alto));
+          const escala = Math.min(1, maximo / Math.max(ancho, alto));
           const lienzo = document.createElement('canvas');
           lienzo.width = Math.max(1, Math.round(ancho * escala));
           lienzo.height = Math.max(1, Math.round(alto * escala));
           lienzo.getContext('2d').drawImage(img, 0, 0, lienzo.width, lienzo.height);
-          return await new Promise((listo) => lienzo.toBlob((png) => listo(png || archivo), 'image/png'));
+          return await new Promise((listo) => lienzo.toBlob((copia) => listo(copia || archivo), tipo, 0.85));
         } catch {
           return archivo; // el servidor decide si es una imagen válida
         } finally {
@@ -568,17 +704,20 @@
   async function pedirTira({ total, llenos, texto }) {
     const fondoSellos = $('#n-fondo-igual').checked ? $('#n-primario').value : $('#n-fondo-sellos').value;
     const { nuevas, quitadas } = cambiosEstampas();
-    const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]],
+    const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]], ['fondo', $('#n-fondo-foto').files[0]],
       ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
     const quitar = [...quitadas];
     if ($('#n-sello-quitar').checked) quitar.push('sello');
+    if ($('#n-fondo-quitar').checked) quitar.push('fondo');
 
     const numero = ++pedidoTira;
-    const partes = await Promise.all(archivos.map(async ([nombre, archivo]) => [nombre, await reducir(archivo)]));
+    const partes = await Promise.all(archivos.map(async ([nombre, archivo]) => [nombre,
+      await (nombre === 'fondo' ? reducir(archivo, { maximo: 1000, tipo: 'image/jpeg' }) : reducir(archivo))]));
     if (numero !== pedidoTira) return;
     const parametros = new URLSearchParams({
       total, llenos, fondo: fondoSellos.slice(1), color: texto.slice(1), negocio_id: editando?.id || '',
       pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
+      efecto: $('#n-fondo-efecto').value,
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });
@@ -621,8 +760,12 @@
       estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       ocultar_nombre: $('#n-ocultar-nombre').checked,
       ...datosDeNiveles(),
+      inactividad_dias: $('#n-inactividad-activa').checked ? diasInactividad() : null,
+      fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
+    const fondo = $('#n-fondo-foto').files[0];
+    if ($('#n-fondo-quitar').checked && !fondo) cuerpo.fondo_estampas_url = null;
     if ($('#n-reglas').value !== reglasAlAbrir) cuerpo.reglas = $('#n-reglas').value;
     if (boton) boton.disabled = true;
     try {
@@ -634,6 +777,7 @@
       const sello = $('#n-sello').files[0];
       if (logo) negocio = await subirImagen(negocio.id, 'logo', logo);
       if (sello) negocio = await subirImagen(negocio.id, 'sello', sello);
+      if (fondo) negocio = await subirImagen(negocio.id, 'fondo', fondo);
       negocio = await guardarEstampas(negocio);
       toast(editando ? 'Guardado. Las tarjetas se actualizan en unos minutos.' : `Negocio creado. Inscripción: ${r.url_inscripcion}`, 'exito');
       await cargarNegocios();

@@ -26,6 +26,9 @@
       // Nivel de la temporada (si el negocio usa niveles).
       $('#nivel').hidden = !r.nivel;
       $('#nivel').textContent = r.nivel ? r.nivel.resumen : '';
+      // Fecha límite si el negocio reinicia las tarjetas por inactividad.
+      $('#vigencia').hidden = !r.vigencia;
+      $('#vigencia').textContent = r.vigencia || '';
     } catch (e) {
       $('#resultado').hidden = true;
       mensaje($('#error'), e.message);

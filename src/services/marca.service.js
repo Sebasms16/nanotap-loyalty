@@ -11,7 +11,7 @@ const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
 const BUCKET = 'marcas';
-const TIPOS = { logo: 'logo_url', sello: 'sello_url' };
+const TIPOS = { logo: 'logo_url', sello: 'sello_url', fondo: 'fondo_estampas_url' };
 let bucketListo = false;
 
 async function asegurarBucket() {
@@ -21,15 +21,17 @@ async function asegurarBucket() {
   bucketListo = true;
 }
 
-// Guarda la imagen como PNG y devuelve su URL pública. Cada subida usa un nombre
-// nuevo para que Apple y Google no sigan mostrando la versión anterior desde su caché.
+// Guarda la imagen (PNG; la foto de fondo, JPG) y devuelve su URL pública. Cada subida
+// usa un nombre nuevo para que Apple y Google no sigan mostrando la versión anterior desde su caché.
 async function guardarPng(negocioId, nombre, buffer) {
-  const png = await estampas.normalizarImagen(buffer);
+  const foto = nombre === 'fondo';
+  const archivo = await (foto ? estampas.normalizarFoto(buffer) : estampas.normalizarImagen(buffer));
   await asegurarBucket();
-  const ruta = `${negocioId}/${nombre}-${Date.now()}.png`;
-  const { error } = await supabase.storage.from(BUCKET).upload(ruta, png, { contentType: 'image/png' });
+  const ruta = `${negocioId}/${nombre}-${Date.now()}.${foto ? 'jpg' : 'png'}`;
+  const { error } = await supabase.storage.from(BUCKET)
+    .upload(ruta, archivo, { contentType: foto ? 'image/jpeg' : 'image/png' });
   if (error) throw errorDb(error, 'subir imagen de marca');
-  return { url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, bytes: png.length };
+  return { url: supabase.storage.from(BUCKET).getPublicUrl(ruta).data.publicUrl, bytes: archivo.length };
 }
 
 async function actualizarNegocio(negocioId, datos) {
@@ -118,7 +120,9 @@ const VERSION_DIBUJO = 3;
 function versionTira(negocio) {
   return crypto.createHash('sha1')
     .update([VERSION_DIBUJO, negocio.sello_url, negocio.logo_url, fondoSellos(negocio), negocio.color_secundario, negocio.sellos_para_premio,
-      JSON.stringify(estampasPropias(negocio)), negocio.estampas_pendientes].join('|'))
+      JSON.stringify(estampasPropias(negocio)), negocio.estampas_pendientes,
+      // Solo si hay foto: así no cambia la versión (ni se re-descarga nada) en los negocios sin foto.
+      ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : [])].join('|'))
     .digest('hex').slice(0, 10);
 }
 
@@ -138,18 +142,43 @@ async function imagenesDeEstampas(negocio) {
   return Promise.all(urls.map((url) => descargas.get(url)));
 }
 
+// Foto de fondo ya recortada y con su efecto, para un tamaño de franja. Se guarda
+// unos minutos: la misma tarjeta se pide en tres tamaños y para cada cliente.
+const fondosListos = new Map();
+async function fondoDelNegocio(negocio, { ancho, alto }) {
+  if (!negocio.fondo_estampas_url) return null;
+  // La vista previa del panel manda el archivo sin guardar (un Buffer): ese no se guarda.
+  const clave = typeof negocio.fondo_estampas_url === 'string'
+    && [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto, fondoSellos(negocio), ancho, alto].join('|');
+  const guardado = clave && fondosListos.get(clave);
+  if (guardado && Date.now() - guardado.en < 10 * 60 * 1000) return guardado.base;
+  const foto = await cargarImagen(negocio.fondo_estampas_url, { negocio_id: negocio.id });
+  if (!foto) return null; // no se pudo descargar: por esta vez, el color de fondo
+  let base = null;
+  try {
+    base = await estampas.fondoConFoto(foto, { ancho, alto, efecto: negocio.fondo_estampas_efecto, color: fondoSellos(negocio) });
+  } catch (error) {
+    log.warn('no se pudo usar la foto de fondo de las estampas', { negocio_id: negocio.id, error });
+  }
+  if (!clave) return base;
+  if (fondosListos.size >= 60) fondosListos.delete(fondosListos.keys().next().value);
+  fondosListos.set(clave, { base, en: Date.now() });
+  return base;
+}
+
 // Zona de estampas del negocio. Con imágenes: cada estampa con la suya (color /
 // gris o círculo vacío). Sin ninguna imagen: círculos con los colores del negocio.
+// Con foto de fondo, las estampas van sobre la foto en vez del color.
 async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {}) {
   const total = negocio.sellos_para_premio;
   const obtenidas = Math.min(Math.max(llenos, 0), total);
   const fondo = fondoSellos(negocio);
   const sello = negocio.color_secundario || '#ffffff';
-  const imagenes = await imagenesDeEstampas(negocio);
-  if (imagenes.some(Boolean)) {
+  const [imagenes, base] = await Promise.all([imagenesDeEstampas(negocio), fondoDelNegocio(negocio, { ancho, alto })]);
+  if (imagenes.some(Boolean) || base) {
     try {
       return await estampas.tiraConImagenes({
-        imagenes, total, llenos: obtenidas, fondo, sello, ocultas: negocio.estampas_pendientes === 'ocultas', ancho, alto,
+        imagenes, total, llenos: obtenidas, fondo, sello, ocultas: negocio.estampas_pendientes === 'ocultas', ancho, alto, base,
       });
     } catch (error) {
       log.warn('no se pudieron usar las imágenes del negocio en las estampas', { negocio_id: negocio.id, error });

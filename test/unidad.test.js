@@ -413,3 +413,71 @@ test('análisis: períodos en hora de Costa Rica y clientes por nivel', () => {
   const r = analisis.clientesPorNivel(neg, [{ canjes: 0, clientes: 5 }, { canjes: 1, clientes: 2 }, { canjes: 3, clientes: 1 }], temporada);
   assert.deepEqual(r.niveles.map((n) => [n.clave, n.clientes]), [['bronce', 7], ['plata', 1], ['oro', 0], ['diamante', 0]]);
 });
+
+test('reinicio por inactividad: aviso con la fecha límite en la tarjeta, la consulta y las reglas', async () => {
+  const inactividad = require('../src/services/inactividad.service');
+  const neg = { ...negocio, inactividad_dias: 30 };
+  const activo = { ...cliente, sellos_actuales: 3, ultima_actividad: '2026-10-14T15:00:00Z' };
+  assert.equal(inactividad.aviso(activo, negocio), null); // el negocio no lo usa
+  // 30 días después del 14 oct (9:00 en CR): el 13 de noviembre.
+  assert.equal(inactividad.fechaLimite(activo, neg).toISOString(), '2026-11-13T15:00:00.000Z');
+  assert.equal(inactividad.aviso(activo, neg), 'Reciba su próxima estampa antes del 13 de noviembre de 2026; si no, sus estampas vuelven a cero.');
+  assert.match(inactividad.aviso({ ...activo, sellos_actuales: 0 }, neg), /Si pasan 30 días sin recibir una estampa/);
+
+  const reglas = require('../src/utils/reglas');
+  assert.ok(reglas.reglasSugeridas(neg).some((r) => /30 días sin recibir una estampa/.test(r)));
+  assert.ok(!reglas.reglasSugeridas(negocio).some((r) => /sin recibir una estampa/.test(r)));
+
+  const objeto = googleWallet.construirObjeto(activo, neg);
+  assert.deepEqual(objeto.textModulesData.find((m) => m.id === 'vigencia'),
+    { id: 'vigencia', header: 'Vigencia de las estampas', body: inactividad.aviso(activo, neg) });
+  assert.ok(!googleWallet.construirObjeto(activo, negocio).textModulesData.some((m) => m.id === 'vigencia'));
+
+  const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+  const json = JSON.parse(leerZip(await appleWallet.generarPass({ cliente: activo, negocio: neg, pass }))['pass.json'].toString('utf8'));
+  assert.equal(json.storeCard.backFields.find((c) => c.key === 'vigencia').value, inactividad.aviso(activo, neg));
+});
+
+test('foto de fondo de las estampas: recorte, efectos y versión de la tira', async () => {
+  const sharp = require('sharp');
+  const estampas = require('../src/services/estampas.service');
+  const marca = require('../src/services/marca.service');
+  // Foto de 1200 × 400: mitad izquierda blanca, mitad derecha azul.
+  const foto = await sharp({ create: { width: 1200, height: 400, channels: 3, background: '#ffffff' } })
+    .composite([{ input: { create: { width: 600, height: 400, channels: 3, background: '#0000ff' } }, left: 600, top: 0 }])
+    .jpeg().toBuffer();
+  const pixel = async (png, x, y) => {
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    const p = (y * info.width + x) * info.channels;
+    return [...data.subarray(p, p + 3)];
+  };
+  const cerca = (a, b, margen = 12) => a.every((c, i) => Math.abs(c - b[i]) <= margen);
+
+  for (const efecto of estampas.EFECTOS_FONDO) {
+    const base = await estampas.fondoConFoto(foto, { ancho: 750, alto: 246, efecto, color: '#ff0000' });
+    const meta = await sharp(base).metadata();
+    assert.deepEqual([meta.width, meta.height], [750, 246], efecto);
+  }
+  const con = (efecto) => estampas.fondoConFoto(foto, { ancho: 750, alto: 246, efecto, color: '#ff0000' });
+  assert.ok(cerca(await pixel(await con('nitida'), 10, 120), [255, 255, 255]));
+  assert.ok(cerca(await pixel(await con('oscura'), 10, 120), [140, 140, 140], 4)); // 45 % de negro
+  assert.ok(cerca(await pixel(await con('clara'), 740, 120), [128, 128, 255], 4)); // 50 % de blanco sobre azul
+  const byn = await pixel(await con('byn'), 740, 120);
+  assert.ok(byn[0] === byn[1] && byn[1] === byn[2]);
+  assert.ok((await pixel(await con('color'), 10, 120))[0] > 200); // teñida con el rojo
+  // Borrosa: en el borde entre blanco y azul el color se mezcla.
+  const borde = await pixel(await con('borrosa'), 372, 120);
+  assert.ok(borde[0] > 40 && borde[0] < 215, `borde ${borde}`);
+
+  // La tira se arma sobre la foto aunque no haya imágenes de estampas (círculos encima).
+  const neg = { ...negocio, sellos_para_premio: 4, fondo_estampas_url: foto, fondo_estampas_efecto: 'nitida' };
+  const tira = await marca.tiraDelNegocio(neg, 1);
+  assert.ok(cerca(await pixel(tira, 5, 5), [255, 255, 255]));
+  assert.ok(cerca(await pixel(tira, 745, 240), [0, 0, 255]));
+
+  // Sin foto la versión no cambia; con foto, cambia con la foto y con el efecto.
+  const conUrl = { ...negocio, fondo_estampas_url: 'https://x/f.jpg', fondo_estampas_efecto: 'nitida' };
+  assert.equal(marca.versionTira({ ...negocio, fondo_estampas_efecto: 'borrosa' }), marca.versionTira(negocio));
+  assert.notEqual(marca.versionTira(conUrl), marca.versionTira(negocio));
+  assert.notEqual(marca.versionTira({ ...conUrl, fondo_estampas_efecto: 'borrosa' }), marca.versionTira(conUrl));
+});

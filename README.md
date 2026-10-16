@@ -148,6 +148,18 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   elija el negocio, **en gris tenue** o **oculta** (círculo vacío, sin revelar la imagen). Sin ninguna imagen, se
   dibujan círculos con los colores del negocio. La imagen se genera en el servidor (`services/estampas.service.js`);
   Google la descarga de `/img/negocios/:id/estampas.png`.
+- **Foto de fondo de las estampas (opcional):** en lugar del color, la zona de estampas puede llevar una foto
+  (`fondo_estampas_url`, se guarda en JPG de hasta 1600 px). Se recorta para llenar la franja buscando la parte más
+  llamativa, con un efecto a elegir (`fondo_estampas_efecto`): nítida, borrosa, un poco oscura, borrosa y oscura,
+  aclarada, blanco y negro o teñida con el color del fondo de las estampas.
+- **Reinicio por inactividad (opcional, por negocio):** si el negocio fija `inactividad_dias`, a quien pase ese
+  tiempo sin estampas ni canjes (`clientes.ultima_actividad`) se le vuelven a cero las estampas, también las de un
+  premio sin canjear. Lo hace la función SQL `reiniciar_inactivos()`, que el worker corre cada hora: anota un evento
+  `reinicio` en el historial y encola las tarjetas. El reverso (Apple), el detalle (Google) y la consulta de saldo
+  muestran la fecha límite, y las reglas sugeridas lo explican (`services/inactividad.service.js`).
+- **Suscripciones:** el operador anota para cada negocio el plan (`semestral` o `anual`) y el inicio del período
+  pagado; el panel calcula el vencimiento (6 o 12 meses después) y la cuenta regresiva, en rojo con menos de un mes
+  (o vencida), amarillo con menos de dos y verde con más. «Renovar» empieza el período siguiente el día del vencimiento.
 - **Niveles por temporada (opcional, por negocio):** 🥉 Bronce → 🥈 Plata → 🥇 Oro → 💎 Diamante
   (`services/niveles.service.js`). Todos empiezan en Bronce y suben según cuántas tarjetas **canjearon en la
   temporada actual** (eventos `canje` de `sellos_eventos`): el nivel se calcula, no se guarda. Cada nivel tiene su
@@ -185,7 +197,8 @@ src/
     googleWallet.service.js    clase/objeto/link firmado
     appleWallet.service.js     .pkpass + revisión de certificados
     apnsPush.service.js        push HTTP/2 a APNs
-    walletSync.service.js      propagación a wallets + cola de reintentos
+    walletSync.service.js      propagación a wallets + cola de reintentos; temporadas y reinicio por inactividad
+    inactividad.service.js     aviso de la fecha límite y reinicio de tarjetas inactivas
     imagen.service.js          PNG de sellos e íconos (sin dependencias)
     qrcode.service.js
   public/                      páginas (inscripción, consulta, privacidad, staff, operador)
@@ -204,7 +217,7 @@ Las rutas de la sección 8 de la especificación, más:
 | `GET` | `/api/operador/clientes?negocio_id=&q=` | Operador | Buscar clientes (teléfono, correo, nombre) |
 | `GET` | `/api/operador/estado` | Operador | Wallets configurados, vencimiento de certificados, reintentos pendientes |
 | `PATCH` | `/api/negocios/:id` | Operador | Editar / activar / desactivar; re-sincroniza las tarjetas si cambia la marca |
-| `POST` | `/api/negocios/:id/imagenes/:tipo` | Operador | Subir el logo (`logo`) o la imagen general de la estampa (`sello`) |
+| `POST` | `/api/negocios/:id/imagenes/:tipo` | Operador | Subir el logo (`logo`), la imagen general de la estampa (`sello`) o la foto de fondo de las estampas (`fondo`) |
 | `POST`/`DELETE` | `/api/negocios/:id/estampas/:posicion` | Operador | Subir / quitar la imagen propia de una estampa (1 a 30) |
 | `GET`/`POST` | `/api/negocios/:id/staff` | Operador | Listar / crear usuarios de staff |
 | `PATCH` | `/api/staff/:id` | Operador | Activar/desactivar, nombre, nueva contraseña |

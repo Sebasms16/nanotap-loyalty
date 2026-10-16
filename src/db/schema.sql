@@ -38,7 +38,17 @@ create table if not exists negocios (
   niveles jsonb,                               -- [{clave, tarjetas, premio}] (null = valores por defecto)
   temporada_meses integer not null default 3 check (temporada_meses between 1 and 12),
   temporada_inicio date,                       -- inicio de la primera temporada; las siguientes se encadenan
-  temporada_sincronizada text                  -- última temporada enviada a las tarjetas (para refrescarlas al cambiar)
+  temporada_sincronizada text,                 -- última temporada enviada a las tarjetas (para refrescarlas al cambiar)
+  -- Reinicio por inactividad: si pasan estos días sin estampas ni canjes, las
+  -- estampas del cliente vuelven a cero (null = nunca). Ver reiniciar_inactivos().
+  inactividad_dias integer check (inactividad_dias between 1 and 3650),
+  -- Foto de fondo de la zona de estampas (en vez del color) y su efecto.
+  fondo_estampas_url text,
+  fondo_estampas_efecto text not null default 'nitida'
+    check (fondo_estampas_efecto in ('nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color')),
+  -- Suscripción del negocio a Nanotap (la anota el operador; vence 6 o 12 meses después del inicio).
+  suscripcion_plan text check (suscripcion_plan in ('semestral', 'anual')),
+  suscripcion_inicio date
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -54,6 +64,12 @@ alter table negocios add column if not exists temporada_meses integer not null d
   check (temporada_meses between 1 and 12);
 alter table negocios add column if not exists temporada_inicio date;
 alter table negocios add column if not exists temporada_sincronizada text;
+alter table negocios add column if not exists inactividad_dias integer check (inactividad_dias between 1 and 3650);
+alter table negocios add column if not exists fondo_estampas_url text;
+alter table negocios add column if not exists fondo_estampas_efecto text not null default 'nitida'
+  check (fondo_estampas_efecto in ('nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'));
+alter table negocios add column if not exists suscripcion_plan text check (suscripcion_plan in ('semestral', 'anual'));
+alter table negocios add column if not exists suscripcion_inicio date;
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -91,6 +107,7 @@ create table if not exists clientes (
   sellos_actuales integer not null default 0 check (sellos_actuales >= 0),
   premios_canjeados integer not null default 0 check (premios_canjeados >= 0),
   creado_en timestamptz not null default now(),
+  ultima_actividad timestamptz not null default now(), -- último sello o canje (o la inscripción)
   unique (negocio_id, telefono)
 );
 
@@ -101,9 +118,21 @@ create table if not exists sellos_eventos (
   id uuid primary key default gen_random_uuid(),
   cliente_id uuid not null references clientes(id) on delete cascade,
   staff_id uuid references staff(id) on delete set null,
-  tipo text not null check (tipo in ('sello', 'canje')),
+  tipo text not null check (tipo in ('sello', 'canje', 'reinicio')), -- reinicio: volvió a cero por inactividad
   creado_en timestamptz not null default now()
 );
+alter table sellos_eventos drop constraint if exists sellos_eventos_tipo_check;
+alter table sellos_eventos add constraint sellos_eventos_tipo_check check (tipo in ('sello', 'canje', 'reinicio'));
+
+-- clientes.ultima_actividad en bases creadas antes: se toma del historial, o de
+-- la inscripción si nunca volvió.
+alter table clientes add column if not exists ultima_actividad timestamptz;
+update clientes c
+   set ultima_actividad = coalesce((select max(e.creado_en) from sellos_eventos e
+                                     where e.cliente_id = c.id and e.tipo in ('sello', 'canje')), c.creado_en)
+ where c.ultima_actividad is null;
+alter table clientes alter column ultima_actividad set default now();
+alter table clientes alter column ultima_actividad set not null;
 
 -- =========================================================
 -- PASSES EMITIDOS (uno por cliente por plataforma)
@@ -163,7 +192,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        (select count(*) from clientes c where c.negocio_id = n.id)::int as total_clientes,
        (select count(*) from staff s where s.negocio_id = n.id and s.activo)::int as total_staff,
        n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes,
-       n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio
+       n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
+       n.inactividad_dias, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio
 from negocios n;
 
 -- =========================================================
@@ -194,7 +224,7 @@ begin
   if not v_activo then raise exception 'negocio_inactivo'; end if;
 
   update clientes
-     set sellos_actuales = sellos_actuales + 1
+     set sellos_actuales = sellos_actuales + 1, ultima_actividad = now()
    where id = p_cliente_id
    returning sellos_actuales, premios_canjeados into v_sellos, v_premios;
 
@@ -239,7 +269,8 @@ begin
 
   update clientes
      set sellos_actuales = sellos_actuales - v_meta,
-         premios_canjeados = premios_canjeados + 1
+         premios_canjeados = premios_canjeados + 1,
+         ultima_actividad = now()
    where id = p_cliente_id
    returning sellos_actuales, premios_canjeados into v_sellos, v_premios;
 
@@ -287,6 +318,51 @@ end;
 $$;
 
 -- =========================================================
+-- REINICIO POR INACTIVIDAD
+-- En los negocios que lo usan, deja en cero las estampas de quien lleva más de
+-- inactividad_dias sin sello ni canje (también un premio sin canjear), lo anota
+-- en el historial y encola sus tarjetas. Si a la vez el staff le suma un sello,
+-- el update espera ese bloqueo y vuelve a evaluar la fecha: ya no lo reinicia.
+-- Devuelve cuántos clientes se reiniciaron.
+-- =========================================================
+create or replace function reiniciar_inactivos()
+returns integer
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_total integer;
+begin
+  with reiniciados as (
+    update clientes c
+       set sellos_actuales = 0
+      from negocios n
+     where n.id = c.negocio_id
+       and n.activo
+       and n.inactividad_dias is not null
+       and c.sellos_actuales > 0
+       and c.ultima_actividad < now() - make_interval(days => n.inactividad_dias)
+    returning c.id
+  ),
+  eventos as (
+    insert into sellos_eventos (cliente_id, tipo) select id, 'reinicio' from reiniciados
+  ),
+  passes as (
+    update wallet_passes wp set ultima_actualizacion = now()
+     where wp.cliente_id in (select id from reiniciados)
+    returning wp.cliente_id, wp.plataforma
+  ),
+  cola as (
+    insert into wallet_sync_pendientes (cliente_id, plataforma)
+    select cliente_id, plataforma from passes
+    on conflict (cliente_id, plataforma) do update set proximo_intento = now(), intentos = 0
+  )
+  select count(*) into v_total from reiniciados;
+  return v_total;
+end;
+$$;
+
+-- =========================================================
 -- ANÁLISIS (panel del dueño del negocio y del operador)
 -- Todo se agrupa en hora de Costa Rica. p_unidad: 'day', 'week' o 'month'.
 -- El período anterior (para comparar) es uno de igual duración justo antes.
@@ -307,7 +383,7 @@ as $$
 with
   cli as (select * from clientes where negocio_id = p_negocio_id),
   meta as (select sellos_para_premio as n from negocios where id = p_negocio_id),
-  ev as (select e.* from sellos_eventos e join cli c on c.id = e.cliente_id),
+  ev as (select e.* from sellos_eventos e join cli c on c.id = e.cliente_id where e.tipo in ('sello', 'canje')),
   ev_p as (select * from ev where creado_en >= p_desde and creado_en < p_hasta),
   ev_a as (select * from ev where creado_en >= p_desde - (p_hasta - p_desde) and creado_en < p_desde),
   activos as (
@@ -423,7 +499,8 @@ stable
 set search_path = public
 as $$
 with
-  ev as (select e.*, c.negocio_id from sellos_eventos e join clientes c on c.id = e.cliente_id),
+  ev as (select e.*, c.negocio_id from sellos_eventos e join clientes c on c.id = e.cliente_id
+          where e.tipo in ('sello', 'canje')),
   ev_p as (select * from ev where creado_en >= p_desde and creado_en < p_hasta),
   ev_a as (select * from ev where creado_en >= p_desde - (p_hasta - p_desde) and creado_en < p_desde)
 select json_build_object(
@@ -495,6 +572,7 @@ alter table wallet_sync_pendientes enable row level security;
 revoke execute on function sumar_sello(uuid, uuid, uuid) from public;
 revoke execute on function canjear_premio(uuid, uuid, uuid) from public;
 revoke execute on function encolar_sync_negocio(uuid) from public;
+revoke execute on function reiniciar_inactivos() from public;
 revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from public;
 revoke execute on function analisis_operador(timestamptz, timestamptz, text) from public;
 
@@ -504,6 +582,7 @@ begin
     revoke execute on function sumar_sello(uuid, uuid, uuid) from anon, authenticated;
     revoke execute on function canjear_premio(uuid, uuid, uuid) from anon, authenticated;
     revoke execute on function encolar_sync_negocio(uuid) from anon, authenticated;
+    revoke execute on function reiniciar_inactivos() from anon, authenticated;
     revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_operador(timestamptz, timestamptz, text) from anon, authenticated;
   end if;
@@ -511,6 +590,7 @@ begin
     grant execute on function sumar_sello(uuid, uuid, uuid) to service_role;
     grant execute on function canjear_premio(uuid, uuid, uuid) to service_role;
     grant execute on function encolar_sync_negocio(uuid) to service_role;
+    grant execute on function reiniciar_inactivos() to service_role;
     grant execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_operador(timestamptz, timestamptz, text) to service_role;
   end if;

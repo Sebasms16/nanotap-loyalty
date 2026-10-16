@@ -11,7 +11,7 @@ const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
 
 const CAMPOS_PUBLICOS_NEGOCIO = 'id, nombre, slug, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, reglas, activo, '
-  + 'niveles_activos, niveles, temporada_meses, temporada_inicio';
+  + 'niveles_activos, niveles, temporada_meses, temporada_inicio, inactividad_dias';
 
 async function negocioActivoPorSlug(slug) {
   const { data, error } = await supabase

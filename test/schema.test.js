@@ -155,3 +155,38 @@ test('análisis del negocio: cifras, serie, horarios, personas y aislamiento', a
   assert.ok(o.resumen.sellos >= 2);
   assert.equal(o.resumen.negocios, (await db.query(`select count(*)::int n from negocios`)).rows[0].n);
 });
+
+test('reiniciar_inactivos: vuelve a cero a quien no viene, respeta a los demás y encola su tarjeta', async () => {
+  const negocio = (await db.query(
+    `insert into negocios (nombre, slug, sellos_para_premio, inactividad_dias) values ('Café C', 'cafe-c', 5, 30) returning id`
+  )).rows[0].id;
+  const nuevo = async (negocioId, telefono, sellos, dias) => (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr, sellos_actuales, ultima_actividad)
+     values ($1, 'X', $2, 'x@example.com', $3, $4, now() - make_interval(days => $5::int)) returning id`,
+    [negocioId, telefono, `CAF-2026-${telefono}`, sellos, dias]
+  )).rows[0].id;
+  const ausente = await nuevo(negocio, '11110001', 3, 45);
+  const reciente = await nuevo(negocio, '11110002', 3, 10);
+  const enCero = await nuevo(negocio, '11110003', 0, 90);
+  const sinReinicio = await nuevo(negocioB, '11110004', 2, 400); // su negocio no lo usa
+  await db.query(`insert into wallet_passes (cliente_id, plataforma, serial_number) values ($1, 'apple', 'serial-ausente')`, [ausente]);
+
+  assert.equal((await db.query('select reiniciar_inactivos() as n')).rows[0].n, 1);
+  const sellos = async (id) => (await db.query('select sellos_actuales from clientes where id = $1', [id])).rows[0].sellos_actuales;
+  assert.equal(await sellos(ausente), 0);
+  assert.equal(await sellos(reciente), 3);
+  assert.equal(await sellos(enCero), 0);
+  assert.equal(await sellos(sinReinicio), 2);
+  const eventos = await db.query('select cliente_id, tipo from sellos_eventos where tipo = $1', ['reinicio']);
+  assert.deepEqual(eventos.rows, [{ cliente_id: ausente, tipo: 'reinicio' }]);
+  const cola = await db.query('select plataforma from wallet_sync_pendientes where cliente_id = $1', [ausente]);
+  assert.deepEqual(cola.rows, [{ plataforma: 'apple' }]);
+  assert.equal((await db.query('select reiniciar_inactivos() as n')).rows[0].n, 0); // ya está en cero
+
+  // Un sello cuenta como actividad: vuelve a empezar el plazo.
+  await rpc('sumar_sello', ausente, negocio);
+  const actividad = await db.query(
+    `select ultima_actividad > now() - interval '1 minute' as reciente from clientes where id = $1`, [ausente]
+  );
+  assert.equal(actividad.rows[0].reciente, true);
+});

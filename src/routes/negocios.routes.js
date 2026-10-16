@@ -6,6 +6,7 @@ const supabase = require('../db/supabaseClient');
 const env = require('../config/env');
 const clientes = require('../services/clientes.service');
 const marca = require('../services/marca.service');
+const estampas = require('../services/estampas.service');
 const log = require('../utils/logger');
 const v = require('../utils/validacion');
 const { aCsv } = require('../utils/csv');
@@ -38,13 +39,20 @@ function validarNiveles(lista) {
 }
 
 // Fecha AAAA-MM-DD válida (puede ser futura: una temporada que todavía no empieza).
-function fechaDeTemporada(valor) {
+function fechaValida(valor, nombre) {
   const texto = String(valor);
   const fecha = new Date(`${texto}T00:00:00Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(texto) || Number.isNaN(fecha.getTime()) || fecha.toISOString().slice(0, 10) !== texto) {
-    throw new HttpError(400, 'La fecha de inicio de la temporada no es válida.');
+    throw new HttpError(400, `La fecha de ${nombre} no es válida.`);
   }
   return texto;
+}
+
+// Opción de una lista cerrada, o null si se permite quitarla.
+function unaDe(valor, opciones, mensaje, { anulable = false } = {}) {
+  if (anulable && (valor === null || valor === '')) return null;
+  if (!opciones.includes(valor)) throw new HttpError(400, mensaje);
+  return valor;
 }
 
 function datosNegocio(cuerpo, { parcial }) {
@@ -72,7 +80,23 @@ function datosNegocio(cuerpo, { parcial }) {
     d.temporada_meses = v.entero(cuerpo.temporada_meses, 'duración de la temporada (meses)', { min: 1, max: 12 });
   }
   if (cuerpo.temporada_inicio !== undefined) {
-    d.temporada_inicio = cuerpo.temporada_inicio ? fechaDeTemporada(cuerpo.temporada_inicio) : null;
+    d.temporada_inicio = cuerpo.temporada_inicio ? fechaValida(cuerpo.temporada_inicio, 'inicio de la temporada') : null;
+  }
+  // null = las estampas no se reinician nunca.
+  if (cuerpo.inactividad_dias !== undefined) {
+    d.inactividad_dias = cuerpo.inactividad_dias === null ? null
+      : v.entero(cuerpo.inactividad_dias, 'días sin actividad para reiniciar la tarjeta', { min: 1, max: 3650 });
+  }
+  // La foto de fondo se sube con POST /:id/imagenes/fondo; aquí solo se puede quitar.
+  if (cuerpo.fondo_estampas_url === null) d.fondo_estampas_url = null;
+  if (cuerpo.fondo_estampas_efecto !== undefined) {
+    d.fondo_estampas_efecto = unaDe(cuerpo.fondo_estampas_efecto, estampas.EFECTOS_FONDO, 'El efecto de la foto de fondo no es válido.');
+  }
+  if (cuerpo.suscripcion_plan !== undefined) {
+    d.suscripcion_plan = unaDe(cuerpo.suscripcion_plan, ['semestral', 'anual'], 'El plan debe ser semestral o anual.', { anulable: true });
+  }
+  if (cuerpo.suscripcion_inicio !== undefined) {
+    d.suscripcion_inicio = cuerpo.suscripcion_inicio ? fechaValida(cuerpo.suscripcion_inicio, 'inicio de la suscripción') : null;
   }
   if (cuerpo.sellos_para_premio !== undefined) {
     d.sellos_para_premio = v.entero(cuerpo.sellos_para_premio, 'sellos para premio', { min: 1, max: 30 });
@@ -132,7 +156,8 @@ router.patch('/:id', requiereOperador, async (req, res) => {
 
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
-    'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio'].some((k) => k in datos);
+    'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_dias',
+    'fondo_estampas_url', 'fondo_estampas_efecto'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });
@@ -158,7 +183,7 @@ async function recibirImagen(req, res, guardar) {
 }
 const crudo = express.raw({ type: 'image/*', limit: '5mb' });
 
-// Subida del logo o de la imagen general de la estampa.
+// Subida del logo, de la imagen general de la estampa o de la foto de fondo de las estampas.
 router.post('/:id/imagenes/:tipo', requiereOperador, crudo, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
   if (!marca.TIPOS[req.params.tipo]) throw new HttpError(404, 'Tipo de imagen desconocido.');

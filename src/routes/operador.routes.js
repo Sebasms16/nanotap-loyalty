@@ -6,6 +6,8 @@ const env = require('../config/env');
 const appleWallet = require('../services/appleWallet.service');
 const marca = require('../services/marca.service');
 const analisis = require('../services/analisis.service');
+const niveles = require('../services/niveles.service');
+const estampas = require('../services/estampas.service');
 const { reglasDelNegocio } = require('../utils/reglas');
 const log = require('../utils/logger');
 const v = require('../utils/validacion');
@@ -24,10 +26,21 @@ router.post('/login', limiteLogin, (req, res) => {
   res.json({ token: firmarOperador() });
 });
 
+// La suscripción vence 6 o 12 meses después del inicio (el 31 de agosto + 6 meses es el 28 de febrero).
+const MESES_DEL_PLAN = { semestral: 6, anual: 12 };
+function vencimientoSuscripcion(n) {
+  const inicio = niveles.leerFecha(n.suscripcion_inicio);
+  if (!inicio || !MESES_DEL_PLAN[n.suscripcion_plan]) return null;
+  return niveles.aTexto(niveles.sumarMeses(inicio, MESES_DEL_PLAN[n.suscripcion_plan]));
+}
+
 router.get('/negocios', requiereOperador, async (req, res) => {
   const { data, error } = await supabase.from('negocios_resumen').select('*').order('creado_en');
   if (error) throw errorDb(error, 'listar negocios');
-  res.json({ negocios: data.map((n) => ({ ...n, reglas_lista: reglasDelNegocio(n) })), base_url: env.baseUrl });
+  res.json({
+    negocios: data.map((n) => ({ ...n, reglas_lista: reglasDelNegocio(n), suscripcion_vence: vencimientoSuscripcion(n) })),
+    base_url: env.baseUrl,
+  });
 });
 
 // Busca clientes de un negocio por teléfono, correo o nombre.
@@ -78,7 +91,8 @@ router.get('/estado', requiereOperador, async (req, res) => {
 // Parte de las imágenes guardadas del negocio (?negocio_id) y les aplica los cambios
 // sin guardar: ?quitar=sello,3 (quitadas) y los archivos elegidos, que vienen
 // seguidos en el cuerpo con sus tamaños en ?partes=logo:1200,sello:800,3:950
-// (logo, sello o la posición de la estampa). Mismo dibujo que en las tarjetas.
+// (logo, sello, fondo o la posición de la estampa) y ?efecto= el de la foto de fondo.
+// Mismo dibujo que en las tarjetas.
 router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
   const color = (valor, porDefecto) => (/^[0-9a-f]{6}$/i.test(valor || '') ? `#${valor}` : porDefecto);
   const total = Math.min(30, Math.max(1, Number.parseInt(req.query.total, 10) || 10));
@@ -91,17 +105,20 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     logo_url: null,
     sello_url: null,
     estampas_urls: [],
+    fondo_estampas_url: null,
+    fondo_estampas_efecto: estampas.EFECTOS_FONDO.includes(req.query.efecto) ? req.query.efecto : 'nitida',
   };
   if (v.esUuid(req.query.negocio_id)) {
     const { data, error } = await supabase
-      .from('negocios').select('logo_url, sello_url, estampas_urls').eq('id', req.query.negocio_id).maybeSingle();
+      .from('negocios').select('logo_url, sello_url, estampas_urls, fondo_estampas_url').eq('id', req.query.negocio_id).maybeSingle();
     if (error) throw errorDb(error, 'leer imágenes para vista previa');
     if (data) Object.assign(negocio, { ...data, estampas_urls: [...(data.estampas_urls || [])] });
   }
 
-  // Cada imagen se nombra "logo", "sello" o el número de la posición (1 a 30).
+  // Cada imagen se nombra "logo", "sello", "fondo" o el número de la posición (1 a 30).
   const poner = (nombre, valor) => {
     if (nombre === 'logo' || nombre === 'sello') negocio[`${nombre}_url`] = valor;
+    else if (nombre === 'fondo') negocio.fondo_estampas_url = valor;
     else if (/^\d+$/.test(nombre) && nombre >= 1 && nombre <= 30) negocio.estampas_urls[nombre - 1] = valor;
   };
   for (const nombre of String(req.query.quitar || '').split(',')) poner(nombre, null);

@@ -8,6 +8,7 @@ const { walletobjects, auth } = require('@googleapis/walletobjects');
 const env = require('../config/env');
 const marca = require('./marca.service');
 const niveles = require('./niveles.service');
+const inactividad = require('./inactividad.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -83,7 +84,8 @@ function construirObjeto(cliente, negocio, estado = null) {
   const sellos = cliente.sellos_actuales;
   const disponible = sellos >= meta;
   const premio = niveles.premioActual(negocio, estado);
-  const estampas = { label: 'Estampas', balance: { string: `${sellos} / ${meta}` } };
+  const vigencia = inactividad.aviso(cliente, negocio);
+  const estampas ={ label: 'Estampas', balance: { string: `${sellos} / ${meta}` } };
   // La imagen de estampas se genera en /img/negocios/... con el logo del negocio.
   // `v` cambia si cambia la marca, para que Google no use una versión vieja de su caché.
   const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png`
@@ -107,6 +109,7 @@ function construirObjeto(cliente, negocio, estado = null) {
         ? { id: 'premio', header: '¡Premio disponible!', body: `Muestre esta tarjeta para canjear: ${premio}.` }
         : { id: 'premio', header: 'Faltan', body: `${meta - sellos} estampa${meta - sellos === 1 ? '' : 's'} para su premio: ${premio}.` },
       ...(estado ? [{ id: 'nivel', header: 'Nivel y temporada', body: niveles.resumen(estado) }] : []),
+      ...(vigencia ? [{ id: 'vigencia', header: 'Vigencia de las estampas', body: vigencia }] : []),
       { id: 'canjeados', header: 'Premios canjeados', body: String(cliente.premios_canjeados) },
       { id: 'reglas', header: 'Reglas del programa', body: reglasComoTexto(negocio) },
     ],
