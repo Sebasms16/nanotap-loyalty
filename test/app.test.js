@@ -160,8 +160,8 @@ test('operador: login y validaciones de alta de negocio', async () => {
 
   // Reinicio por inactividad, foto de fondo y suscripción: se validan antes de tocar la BD.
   const negocioCon = (extra) => pedir('/api/negocios', json({ nombre: 'Café', slug: 'cafe', ...extra }, token));
-  assert.equal((await negocioCon({ inactividad_dias: 0 })).status, 400);
-  assert.equal((await negocioCon({ inactividad_dias: 4000 })).status, 400);
+  assert.equal((await negocioCon({ inactividad_meses: 0 })).status, 400);
+  assert.equal((await negocioCon({ inactividad_meses: 37 })).status, 400);
   assert.equal((await negocioCon({ fondo_estampas_efecto: 'neon' })).status, 400);
   assert.equal((await negocioCon({ suscripcion_plan: 'mensual' })).status, 400);
   const fechaMala = await negocioCon({ suscripcion_inicio: '2026-13-01' });

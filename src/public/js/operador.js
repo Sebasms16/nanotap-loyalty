@@ -221,8 +221,8 @@
     $('#n-fondo-efecto').value = n?.fondo_estampas_efecto || 'nitida';
     $('#n-fondo-aviso').hidden = true;
     mostrarFondo();
-    $('#n-inactividad-activa').checked = Boolean(n?.inactividad_dias);
-    $('#n-inactividad-dias').value = n?.inactividad_dias || 90;
+    $('#n-inactividad-activa').checked = Boolean(n?.inactividad_meses);
+    $('#n-inactividad-meses').value = String(n?.inactividad_meses || 3);
     mostrarInactividad();
     $('#n-sellos').value = n?.sellos_para_premio || 10;
     $('#n-premio').value = n?.descripcion_premio || 'Producto gratis';
@@ -375,17 +375,18 @@
   }
 
   // --- Reinicio por inactividad --------------------------------------------------
-  const diasInactividad = () => Math.min(3650, Math.max(1, Math.round(Number($('#n-inactividad-dias').value) || 90)));
+  for (let meses = 1; meses <= 36; meses++) {
+    $('#n-inactividad-meses').append(el('option', { value: meses }, `${meses} ${meses === 1 ? 'mes' : 'meses'}`));
+  }
+  const mesesInactividad = () => Number($('#n-inactividad-meses').value) || 3;
 
   function mostrarInactividad() {
     const activa = $('#n-inactividad-activa').checked;
     $('#n-inactividad-config').hidden = !activa;
     if (!activa) return;
-    const dias = diasInactividad();
-    const limite = new Date(Date.now() + dias * 24 * 60 * 60 * 1000)
+    const limite = sumarMeses(hoySinHora(), mesesInactividad())
       .toLocaleDateString('es-CR', { day: 'numeric', month: 'long', year: 'numeric' });
-    const aprox = dias >= 60 ? ` (unos ${Math.round(dias / 30)} meses)` : '';
-    $('#n-inactividad-resumen').textContent = `${dias} días${aprox}: si un cliente recibe hoy una estampa y no vuelve, `
+    $('#n-inactividad-resumen').textContent = 'Por ejemplo: si un cliente recibe hoy una estampa y no vuelve, '
       + `sus estampas vuelven a cero el ${limite}.`;
   }
   $('#form-negocio').addEventListener('input', mostrarInactividad);
@@ -761,7 +762,7 @@
       estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       ocultar_nombre: $('#n-ocultar-nombre').checked,
       ...datosDeNiveles(),
-      inactividad_dias: $('#n-inactividad-activa').checked ? diasInactividad() : null,
+      inactividad_meses: $('#n-inactividad-activa').checked ? mesesInactividad() : null,
       fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;

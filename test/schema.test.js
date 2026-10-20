@@ -158,7 +158,7 @@ test('análisis del negocio: cifras, serie, horarios, personas y aislamiento', a
 
 test('reiniciar_inactivos: vuelve a cero a quien no viene, respeta a los demás y encola su tarjeta', async () => {
   const negocio = (await db.query(
-    `insert into negocios (nombre, slug, sellos_para_premio, inactividad_dias) values ('Café C', 'cafe-c', 5, 30) returning id`
+    `insert into negocios (nombre, slug, sellos_para_premio, inactividad_meses) values ('Café C', 'cafe-c', 5, 1) returning id`
   )).rows[0].id;
   const nuevo = async (negocioId, telefono, sellos, dias) => (await db.query(
     `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr, sellos_actuales, ultima_actividad)
@@ -189,4 +189,16 @@ test('reiniciar_inactivos: vuelve a cero a quien no viene, respeta a los demás 
     `select ultima_actividad > now() - interval '1 minute' as reciente from clientes where id = $1`, [ausente]
   );
   assert.equal(actividad.rows[0].reciente, true);
+});
+
+test('el plazo de inactividad guardado en días se pasa a meses al volver a correr el esquema', async () => {
+  await db.exec('alter table negocios add column inactividad_dias integer');
+  await db.query(`update negocios set inactividad_dias = 730, inactividad_meses = null where slug = 'cafe-b'`);
+  await db.exec(fs.readFileSync(path.join(__dirname, '..', 'src', 'db', 'schema.sql'), 'utf8'));
+  const r = await db.query(`select inactividad_meses from negocios_resumen where slug = 'cafe-b'`);
+  assert.equal(r.rows[0].inactividad_meses, 24);
+  const columna = await db.query(
+    `select 1 from information_schema.columns where table_name = 'negocios' and column_name = 'inactividad_dias'`
+  );
+  assert.equal(columna.rows.length, 0);
 });

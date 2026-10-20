@@ -416,16 +416,17 @@ test('análisis: períodos en hora de Costa Rica y clientes por nivel', () => {
 
 test('reinicio por inactividad: aviso con la fecha límite en la tarjeta, la consulta y las reglas', async () => {
   const inactividad = require('../src/services/inactividad.service');
-  const neg = { ...negocio, inactividad_dias: 30 };
+  const neg = { ...negocio, inactividad_meses: 1 };
   const activo = { ...cliente, sellos_actuales: 3, ultima_actividad: '2026-10-14T15:00:00Z' };
   assert.equal(inactividad.aviso(activo, negocio), null); // el negocio no lo usa
-  // 30 días después del 14 oct (9:00 en CR): el 13 de noviembre.
-  assert.equal(inactividad.fechaLimite(activo, neg).toISOString(), '2026-11-13T15:00:00.000Z');
-  assert.equal(inactividad.aviso(activo, neg), 'Reciba su próxima estampa antes del 13 de noviembre de 2026; si no, sus estampas vuelven a cero.');
-  assert.match(inactividad.aviso({ ...activo, sellos_actuales: 0 }, neg), /Si pasan 30 días sin recibir una estampa/);
+  // Un mes después del 14 oct (9:00 en CR): el 14 de noviembre.
+  assert.equal(inactividad.fechaLimite(activo, neg).toISOString(), '2026-11-14T15:00:00.000Z');
+  assert.equal(inactividad.aviso(activo, neg), 'Reciba su próxima estampa antes del 14 de noviembre de 2026; si no, sus estampas vuelven a cero.');
+  assert.match(inactividad.aviso({ ...activo, sellos_actuales: 0 }, neg), /Si pasa 1 mes sin recibir una estampa/);
 
   const reglas = require('../src/utils/reglas');
-  assert.ok(reglas.reglasSugeridas(neg).some((r) => /30 días sin recibir una estampa/.test(r)));
+  assert.ok(reglas.reglasSugeridas(neg).some((r) => /1 mes sin recibir una estampa/.test(r)));
+  assert.ok(reglas.reglasSugeridas({ ...negocio, inactividad_meses: 6 }).some((r) => /^Si pasan 6 meses sin recibir/.test(r)));
   assert.ok(!reglas.reglasSugeridas(negocio).some((r) => /sin recibir una estampa/.test(r)));
 
   const objeto = googleWallet.construirObjeto(activo, neg);

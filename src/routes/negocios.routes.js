@@ -83,9 +83,9 @@ function datosNegocio(cuerpo, { parcial }) {
     d.temporada_inicio = cuerpo.temporada_inicio ? fechaValida(cuerpo.temporada_inicio, 'inicio de la temporada') : null;
   }
   // null = las estampas no se reinician nunca.
-  if (cuerpo.inactividad_dias !== undefined) {
-    d.inactividad_dias = cuerpo.inactividad_dias === null ? null
-      : v.entero(cuerpo.inactividad_dias, 'días sin actividad para reiniciar la tarjeta', { min: 1, max: 3650 });
+  if (cuerpo.inactividad_meses !== undefined) {
+    d.inactividad_meses = cuerpo.inactividad_meses === null ? null
+      : v.entero(cuerpo.inactividad_meses, 'meses sin actividad para reiniciar la tarjeta', { min: 1, max: 36 });
   }
   // La foto de fondo se sube con POST /:id/imagenes/fondo; aquí solo se puede quitar.
   if (cuerpo.fondo_estampas_url === null) d.fondo_estampas_url = null;
@@ -156,7 +156,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
 
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
-    'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_dias',
+    'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });

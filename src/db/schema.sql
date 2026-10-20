@@ -39,9 +39,9 @@ create table if not exists negocios (
   temporada_meses integer not null default 3 check (temporada_meses between 1 and 12),
   temporada_inicio date,                       -- inicio de la primera temporada; las siguientes se encadenan
   temporada_sincronizada text,                 -- última temporada enviada a las tarjetas (para refrescarlas al cambiar)
-  -- Reinicio por inactividad: si pasan estos días sin estampas ni canjes, las
+  -- Reinicio por inactividad: si pasan estos meses sin estampas ni canjes, las
   -- estampas del cliente vuelven a cero (null = nunca). Ver reiniciar_inactivos().
-  inactividad_dias integer check (inactividad_dias between 1 and 3650),
+  inactividad_meses integer check (inactividad_meses between 1 and 36),
   -- Foto de fondo de la zona de estampas (en vez del color) y su efecto.
   fondo_estampas_url text,
   fondo_estampas_efecto text not null default 'nitida'
@@ -64,7 +64,19 @@ alter table negocios add column if not exists temporada_meses integer not null d
   check (temporada_meses between 1 and 12);
 alter table negocios add column if not exists temporada_inicio date;
 alter table negocios add column if not exists temporada_sincronizada text;
-alter table negocios add column if not exists inactividad_dias integer check (inactividad_dias between 1 and 3650);
+alter table negocios add column if not exists inactividad_meses integer check (inactividad_meses between 1 and 36);
+-- Al principio el plazo se medía en días: se pasa a meses (730 días → 24 meses) y se quita la columna vieja.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+              where table_schema = 'public' and table_name = 'negocios' and column_name = 'inactividad_dias') then
+    update negocios set inactividad_meses = greatest(1, least(36, round(inactividad_dias / 30.4375)))::int
+     where inactividad_dias is not null and inactividad_meses is null;
+    drop view if exists negocios_resumen;
+    alter table negocios drop column inactividad_dias;
+  end if;
+end;
+$$;
 alter table negocios add column if not exists fondo_estampas_url text;
 alter table negocios add column if not exists fondo_estampas_efecto text not null default 'nitida'
   check (fondo_estampas_efecto in ('nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'));
@@ -185,15 +197,16 @@ create index if not exists idx_sellos_eventos_creado on sellos_eventos(creado_en
 -- =========================================================
 -- VISTA PARA EL PANEL DEL OPERADOR (RF-08)
 -- =========================================================
--- Columnas explícitas: "create or replace view" solo permite agregar columnas al final.
-create or replace view negocios_resumen with (security_invoker = on) as
+-- Se vuelve a crear entera: "create or replace view" no permite quitar ni reordenar columnas.
+drop view if exists negocios_resumen;
+create view negocios_resumen with (security_invoker = on) as
 select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.sellos_para_premio, n.descripcion_premio, n.activo, n.creado_en,
        (select count(*) from clientes c where c.negocio_id = n.id)::int as total_clientes,
        (select count(*) from staff s where s.negocio_id = n.id and s.activo)::int as total_staff,
        n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
-       n.inactividad_dias, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio
+       n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio
 from negocios n;
 
 -- =========================================================
@@ -320,7 +333,7 @@ $$;
 -- =========================================================
 -- REINICIO POR INACTIVIDAD
 -- En los negocios que lo usan, deja en cero las estampas de quien lleva más de
--- inactividad_dias sin sello ni canje (también un premio sin canjear), lo anota
+-- inactividad_meses sin sello ni canje (también un premio sin canjear), lo anota
 -- en el historial y encola sus tarjetas. Si a la vez el staff le suma un sello,
 -- el update espera ese bloqueo y vuelve a evaluar la fecha: ya no lo reinicia.
 -- Devuelve cuántos clientes se reiniciaron.
@@ -339,9 +352,9 @@ begin
       from negocios n
      where n.id = c.negocio_id
        and n.activo
-       and n.inactividad_dias is not null
+       and n.inactividad_meses is not null
        and c.sellos_actuales > 0
-       and c.ultima_actividad < now() - make_interval(days => n.inactividad_dias)
+       and c.ultima_actividad < now() - make_interval(months => n.inactividad_meses)
     returning c.id
   ),
   eventos as (

@@ -152,7 +152,7 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   (`fondo_estampas_url`, se guarda en JPG de hasta 1600 px). Se recorta para llenar la franja buscando la parte más
   llamativa, con un efecto a elegir (`fondo_estampas_efecto`): nítida, borrosa, un poco oscura, borrosa y oscura,
   aclarada, blanco y negro o teñida con el color del fondo de las estampas.
-- **Reinicio por inactividad (opcional, por negocio):** si el negocio fija `inactividad_dias`, a quien pase ese
+- **Reinicio por inactividad (opcional, por negocio):** si el negocio fija `inactividad_meses` (de 1 a 36), a quien pase ese
   tiempo sin estampas ni canjes (`clientes.ultima_actividad`) se le vuelven a cero las estampas, también las de un
   premio sin canjear. Lo hace la función SQL `reiniciar_inactivos()`, que el worker corre cada hora: anota un evento
   `reinicio` en el historial y encola las tarjetas. El reverso (Apple), el detalle (Google) y la consulta de saldo

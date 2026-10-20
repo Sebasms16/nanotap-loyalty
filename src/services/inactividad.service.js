@@ -1,6 +1,6 @@
 // Reinicio de la tarjeta por inactividad (opcional por negocio).
 //
-// Si el negocio fija inactividad_dias, a quien pase ese tiempo sin recibir una
+// Si el negocio fija inactividad_meses, a quien pase ese tiempo sin recibir una
 // estampa ni canjear se le vuelven a cero las estampas (función SQL
 // reiniciar_inactivos, que corre cada hora desde el worker). La tarjeta le
 // avisa la fecha límite para que no lo tome por sorpresa.
@@ -8,25 +8,36 @@ const supabase = require('../db/supabaseClient');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
-const DIA_MS = 24 * 60 * 60 * 1000;
 const ZONA = 'America/Costa_Rica';
 
-const activo = (negocio) => Number.isInteger(negocio?.inactividad_dias) && negocio.inactividad_dias > 0;
+const activo = (negocio) => Number.isInteger(negocio?.inactividad_meses) && negocio.inactividad_meses > 0;
+
+// Suma meses como Postgres (el 31 de enero + 1 mes es el 28 o 29 de febrero).
+function sumarMeses(fecha, meses) {
+  const f = new Date(fecha);
+  const dia = f.getUTCDate();
+  f.setUTCDate(1);
+  f.setUTCMonth(f.getUTCMonth() + meses);
+  const ultimoDia = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + 1, 0)).getUTCDate();
+  f.setUTCDate(Math.min(dia, ultimoDia));
+  return f;
+}
 
 // Instante en que se reinician las estampas del cliente si no vuelve (null si no aplica).
 function fechaLimite(cliente, negocio) {
   if (!activo(negocio) || !cliente.ultima_actividad) return null;
-  return new Date(new Date(cliente.ultima_actividad).getTime() + negocio.inactividad_dias * DIA_MS);
+  return sumarMeses(cliente.ultima_actividad, negocio.inactividad_meses);
 }
 
 const formato = (fecha) => new Intl.DateTimeFormat('es-CR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: ZONA })
   .format(fecha);
 
-const plazo = (dias) => `${dias} ${dias === 1 ? 'día' : 'días'}`;
+const plazo = (meses) => `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
 
 // Línea para las reglas sugeridas del programa.
 function regla(negocio) {
-  return `Si pasan ${plazo(negocio.inactividad_dias)} sin recibir una estampa, las estampas acumuladas vuelven a cero.`;
+  const meses = negocio.inactividad_meses;
+  return `Si ${meses === 1 ? 'pasa' : 'pasan'} ${plazo(meses)} sin recibir una estampa, las estampas acumuladas vuelven a cero.`;
 }
 
 // Aviso para el cliente (reverso de la tarjeta y consulta): con estampas, la fecha límite.
