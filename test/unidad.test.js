@@ -481,3 +481,27 @@ test('foto de fondo de las estampas: recorte, efectos y versión de la tira', as
   assert.notEqual(marca.versionTira(conUrl), marca.versionTira(negocio));
   assert.notEqual(marca.versionTira({ ...conUrl, fondo_estampas_efecto: 'borrosa' }), marca.versionTira(conUrl));
 });
+
+test('estampas ocultas: el aro punteado se distingue del fondo aunque el texto sea del mismo color', async () => {
+  const sharp = require('sharp');
+  const marca = require('../src/services/marca.service');
+  const cuadro = await sharp({ create: { width: 300, height: 300, channels: 4, background: { r: 200, g: 0, b: 0, alpha: 1 } } }).png().toBuffer();
+  // Como Woven Souls: texto y fondo de las estampas del mismo crema; tarjeta verde.
+  const neg = {
+    ...negocio, sellos_para_premio: 4, estampas_pendientes: 'ocultas', sello_url: cuadro, estampas_urls: [],
+    color_primario: '#556f62', color_secundario: '#f6eddc', color_fondo_sellos: '#f6eddc',
+  };
+  const { data, info } = await sharp(await marca.tiraDelNegocio(neg, 1)).raw().toBuffer({ resolveWithObject: true });
+  const { celda, centros } = imagen.distribuirEstampas(4, 750, 246);
+  // Recorre el borde del aro de la última estampa: algún punto debe ser verdoso, no crema.
+  const { x, y } = centros[3];
+  const radio = Math.round(celda * 0.84) * 0.45 * 0.94;
+  let verde = false;
+  for (let a = 0; a < 360; a += 3) {
+    const px = Math.round(x + radio * Math.cos((a * Math.PI) / 180));
+    const py = Math.round(y + radio * Math.sin((a * Math.PI) / 180));
+    const p = (py * info.width + px) * info.channels;
+    if (data[p + 1] < 200 && data[p] < 200) verde = true;
+  }
+  assert.ok(verde, 'el aro de la estampa oculta no se ve sobre el fondo');
+});

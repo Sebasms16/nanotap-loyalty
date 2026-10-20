@@ -92,6 +92,7 @@ router.get('/estado', requiereOperador, async (req, res) => {
 // sin guardar: ?quitar=sello,3 (quitadas) y los archivos elegidos, que vienen
 // seguidos en el cuerpo con sus tamaños en ?partes=logo:1200,sello:800,3:950
 // (logo, sello, fondo o la posición de la estampa) y ?efecto= el de la foto de fondo.
+// ?fondo= es el color de la zona de estampas y ?tarjeta= el de la tarjeta.
 // Mismo dibujo que en las tarjetas.
 router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
   const color = (valor, porDefecto) => (/^[0-9a-f]{6}$/i.test(valor || '') ? `#${valor}` : porDefecto);
@@ -99,7 +100,8 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
   const negocio = {
     id: req.query.negocio_id,
     sellos_para_premio: total,
-    color_primario: color(req.query.fondo, '#1a1a2e'),
+    color_fondo_sellos: color(req.query.fondo, '#1a1a2e'),
+    color_primario: color(req.query.tarjeta, color(req.query.fondo, '#1a1a2e')),
     color_secundario: color(req.query.color, '#ffffff'),
     estampas_pendientes: req.query.pendientes === 'ocultas' ? 'ocultas' : 'gris',
     logo_url: null,

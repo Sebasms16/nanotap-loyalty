@@ -715,7 +715,8 @@
       await (nombre === 'fondo' ? reducir(archivo, { maximo: 1000, tipo: 'image/jpeg' }) : reducir(archivo))]));
     if (numero !== pedidoTira) return;
     const parametros = new URLSearchParams({
-      total, llenos, fondo: fondoSellos.slice(1), color: texto.slice(1), negocio_id: editando?.id || '',
+      total, llenos, fondo: fondoSellos.slice(1), color: texto.slice(1), tarjeta: $('#n-primario').value.slice(1),
+      negocio_id: editando?.id || '',
       pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       efecto: $('#n-fondo-efecto').value,
       quitar: quitar.join(','),

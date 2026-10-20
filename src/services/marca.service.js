@@ -179,6 +179,7 @@ async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {})
     try {
       return await estampas.tiraConImagenes({
         imagenes, total, llenos: obtenidas, fondo, sello, ocultas: negocio.estampas_pendientes === 'ocultas', ancho, alto, base,
+        tarjeta: negocio.color_primario,
       });
     } catch (error) {
       log.warn('no se pudieron usar las imágenes del negocio en las estampas', { negocio_id: negocio.id, error });

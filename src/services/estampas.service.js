@@ -34,17 +34,51 @@ async function estampaGris(color) {
 }
 
 // Círculos del mismo estilo que la tira sin imágenes (imagen.service): lleno con
-// un punto al centro para una estampa obtenida, solo el contorno para una pendiente.
-function circulo(lado, { color, fondo, lleno }) {
+// un punto al centro para una estampa obtenida. Una pendiente sin imagen (u oculta)
+// es un aro punteado, como en el panel del staff, en el color `aro`.
+function circulo(lado, { color, fondo, lleno, aro = color }) {
   const c = lado / 2;
   const radio = lado * 0.45;
-  const svg = lleno
-    ? `<circle cx="${c}" cy="${c}" r="${radio}" fill="${color}"/>`
-      + `<circle cx="${c}" cy="${c}" r="${radio * 0.42}" fill="${fondo}" fill-opacity="0.9"/>`
-    : `<circle cx="${c}" cy="${c}" r="${radio * 0.94}" fill="none" stroke="${color}" stroke-opacity="0.45"`
-      + ` stroke-width="${Math.max(2, radio * 0.12)}"/>`;
+  let svg;
+  if (lleno) {
+    svg = `<circle cx="${c}" cy="${c}" r="${radio}" fill="${color}"/>`
+      + `<circle cx="${c}" cy="${c}" r="${radio * 0.42}" fill="${fondo}" fill-opacity="0.9"/>`;
+  } else {
+    const r = radio * 0.94;
+    const trazo = (2 * Math.PI * r) / 32; // 16 trazos con 16 espacios iguales
+    svg = `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${aro}" stroke-opacity="0.7"`
+      + ` stroke-width="${Math.max(2, radio * 0.1)}" stroke-dasharray="${trazo} ${trazo}" stroke-linecap="round"/>`;
+  }
   return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${lado}" height="${lado}">${svg}</svg>`))
     .png().toBuffer();
+}
+
+// Contraste (WCAG) entre dos colores [r, g, b].
+function luminancia(rgb) {
+  const [r, g, b] = rgb.map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contraste(a, b) {
+  const [claro, oscuro] = [luminancia(a), luminancia(b)].sort((x, y) => y - x);
+  return (claro + 0.05) / (oscuro + 0.05);
+}
+
+// Color del aro de las pendientes: el primero de los colores del negocio que se
+// distinga del fondo (3:1, lo mínimo para un gráfico); si ninguno, blanco u oscuro.
+// Hace falta porque muchos negocios usan el mismo color para el texto y el fondo de las estampas.
+function colorQueSeVe(fondoRgb, candidatos) {
+  const opciones = [...candidatos.filter(Boolean), '#ffffff', '#1f1f1f'];
+  return opciones.find((hex) => contraste(hexARgb(hex), fondoRgb) >= 3)
+    || opciones.reduce((mejor, hex) => (contraste(hexARgb(hex), fondoRgb) > contraste(hexARgb(mejor), fondoRgb) ? hex : mejor));
+}
+
+// Color promedio de la foto de fondo (para elegir un aro que se vea encima).
+async function colorPromedio(png) {
+  const { channels } = await sharp(png).stats();
+  return channels.slice(0, 3).map((canal) => Math.round(canal.mean));
 }
 
 /**
@@ -55,10 +89,15 @@ function circulo(lado, { color, fondo, lleno }) {
  * @param {string} sello    color de los círculos de las posiciones sin imagen (#rrggbb)
  * @param {boolean} ocultas las pendientes se ven como círculo vacío en vez de la imagen en gris
  * @param {Buffer} [base]   fondo ya armado de ancho × alto (foto de fondo); si no, el color `fondo`
+ * @param {string} [tarjeta] color de la tarjeta: otra opción para el aro de las pendientes
  */
-async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246, base = null }) {
+async function tiraConImagenes({
+  imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246, base = null, tarjeta = null,
+}) {
   const { celda, centros } = distribuirEstampas(total, ancho, alto);
   const lado = Math.round(celda * 0.84);
+  const hayAros = imagenes.slice(llenos, total).some((imagen) => !imagen || ocultas);
+  const aro = hayAros ? colorQueSeVe(base ? await colorPromedio(base) : hexARgb(fondo), [sello, tarjeta]) : sello;
 
   // Cada imagen distinta se prepara una sola vez: lo común es que varias posiciones la compartan.
   const memo = (crear) => {
@@ -70,7 +109,7 @@ async function tiraConImagenes({ imagenes, total, llenos, fondo, sello = '#fffff
   };
   const color = memo((imagen) => estampaColor(imagen, lado));
   const gris = memo(async (imagen) => estampaGris(await color(imagen)));
-  const circulos = memo((esLleno) => circulo(lado, { color: sello, fondo, lleno: esLleno }));
+  const circulos = memo((esLleno) => circulo(lado, { color: sello, fondo, lleno: esLleno, aro }));
 
   const capas = await Promise.all(Array.from({ length: total }, async (_, i) => {
     const imagen = imagenes[i] || null;
