@@ -67,6 +67,7 @@ function datosNegocio(cuerpo, { parcial }) {
   }
   // Las imágenes se suben con POST /:id/imagenes/:tipo; aquí solo se pueden quitar.
   if (cuerpo.sello_url === null) d.sello_url = null;
+  if (cuerpo.estampa_final_url === null) d.estampa_final_url = null;
   if (cuerpo.estampas_pendientes !== undefined) {
     if (!['gris', 'ocultas'].includes(cuerpo.estampas_pendientes)) {
       throw new HttpError(400, 'Las estampas pendientes deben verse "gris" u "ocultas".');
@@ -154,7 +155,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   if (error) throw errorDb(error, 'editar negocio');
   if (!data) throw new HttpError(404, 'Negocio no encontrado.');
 
-  const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'color_primario', 'color_secundario', 'color_fondo_sellos',
+  const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'estampa_final_url','color_primario', 'color_secundario', 'color_fondo_sellos',
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto'].some((k) => k in datos);
@@ -183,7 +184,8 @@ async function recibirImagen(req, res, guardar) {
 }
 const crudo = express.raw({ type: 'image/*', limit: '5mb' });
 
-// Subida del logo, de la imagen general de la estampa o de la foto de fondo de las estampas.
+// Subida del logo, de la imagen general de la estampa, de la última estampa (final)
+// o de la foto de fondo de las estampas.
 router.post('/:id/imagenes/:tipo', requiereOperador, crudo, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Negocio no encontrado.');
   if (!marca.TIPOS[req.params.tipo]) throw new HttpError(404, 'Tipo de imagen desconocido.');

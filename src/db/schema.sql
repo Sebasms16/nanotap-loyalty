@@ -30,6 +30,7 @@ create table if not exists negocios (
   color_fondo_sellos text,                   -- fondo de la zona de estampas (si es null, el color de la tarjeta)
   reglas text,                               -- reglas del programa, una por línea (si es null, las sugeridas)
   estampas_urls jsonb not null default '[]', -- imagen propia de cada estampa, por posición (null = la general)
+  estampa_final_url text,                    -- imagen de la última estampa (la del premio), sea cual sea la cantidad
   estampas_pendientes text not null default 'gris'
     check (estampas_pendientes in ('gris', 'ocultas')), -- gris: la imagen en gris; ocultas: círculo vacío
   ocultar_nombre boolean not null default false, -- no mostrar el nombre junto al logo (Apple), si el logo ya lo trae
@@ -55,6 +56,7 @@ alter table negocios add column if not exists sello_url text;
 alter table negocios add column if not exists color_fondo_sellos text;
 alter table negocios add column if not exists reglas text;
 alter table negocios add column if not exists estampas_urls jsonb not null default '[]';
+alter table negocios add column if not exists estampa_final_url text;
 alter table negocios add column if not exists estampas_pendientes text not null default 'gris'
   check (estampas_pendientes in ('gris', 'ocultas'));
 alter table negocios add column if not exists ocultar_nombre boolean not null default false;
@@ -206,7 +208,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        (select count(*) from staff s where s.negocio_id = n.id and s.activo)::int as total_staff,
        n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
-       n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio
+       n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
+       n.estampa_final_url
 from negocios n;
 
 -- =========================================================

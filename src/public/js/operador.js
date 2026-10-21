@@ -209,6 +209,9 @@
     $('#n-ocultar-nombre').checked = Boolean(n?.ocultar_nombre);
     mostrarMiniatura('#n-sello-actual', n?.sello_url);
     $('#n-sello-quitar-fila').hidden = !n?.sello_url;
+    $('#n-final').value = '';
+    mostrarMiniatura('#n-final-actual', n?.estampa_final_url);
+    $('#n-final-aviso').hidden = true;
     $('#n-primario').value = n?.color_primario || '#1a1a2e';
     $('#n-secundario').value = n?.color_secundario || '#ffffff';
     $('#n-fondo-igual').checked = !n?.color_fondo_sellos;
@@ -433,26 +436,41 @@
 
   // Posiciones con imagen propia guardada (1 = primera estampa).
   const estampasGuardadas = () => (editando?.estampas_urls || []).flatMap((url, i) => (url ? [i + 1] : []));
-  const modoDistintas = () => document.querySelector('input[name="n-modo-estampas"]:checked').value === 'distintas';
+  // misma: una imagen para todas · ultima: todas iguales y la última con la suya ·
+  // distintas: una imagen por posición.
+  const modoEstampas = () => document.querySelector('input[name="n-modo-estampas"]:checked').value;
+  const modoDistintas = () => modoEstampas() === 'distintas';
 
   function reiniciarEstampas() {
     for (const { url } of estampasNuevas.values()) URL.revokeObjectURL(url);
     estampasNuevas.clear();
     estampasQuitadas.clear();
-    const modo = estampasGuardadas().length ? 'distintas' : 'misma';
+    const modo = estampasGuardadas().length ? 'distintas' : editando?.estampa_final_url ? 'ultima' : 'misma';
     document.querySelector(`input[name="n-modo-estampas"][value="${modo}"]`).checked = true;
     mostrarModo();
     pintarEstampas();
   }
 
-  // Muestra solo lo que corresponde al modo elegido. Volver a "la misma para todas"
-  // no borra nada hasta Guardar; si había imágenes por estampa, se avisa.
+  // Muestra solo lo que corresponde al modo elegido. Cambiar de modo no borra
+  // nada hasta Guardar; si se van a quitar imágenes guardadas, se avisa.
   function mostrarModo() {
-    const distintas = modoDistintas();
-    $('#n-campo-misma').hidden = distintas;
-    $('#n-campo-distintas').hidden = !distintas;
-    $('#n-modo-aviso').hidden = distintas || !estampasGuardadas().length;
+    const modo = modoEstampas();
+    $('#n-campo-misma').hidden = modo === 'distintas';
+    $('#n-campo-final').hidden = modo !== 'ultima';
+    $('#n-campo-distintas').hidden = modo !== 'distintas';
+    const avisos = [];
+    if (modo !== 'distintas' && estampasGuardadas().length) avisos.push('las imágenes que tiene cada estampa');
+    if (modo !== 'ultima' && editando?.estampa_final_url) avisos.push('la imagen de la última estampa');
+    $('#n-modo-aviso').textContent = `Al guardar se quitarán ${avisos.join(' y ')}.`;
+    $('#n-modo-aviso').hidden = !avisos.length;
   }
+
+  // Última estampa: el archivo nuevo a subir y si hay que quitar la guardada.
+  function cambiosFinal() {
+    const archivo = modoEstampas() === 'ultima' ? $('#n-final').files[0] : null;
+    return { archivo, quitar: modoEstampas() !== 'ultima' && Boolean(editando?.estampa_final_url) };
+  }
+  $('#n-final').addEventListener('change', () => { revisarImagen('final'); actualizarVistaPrevia(); });
   document.querySelectorAll('input[name="n-modo-estampas"]').forEach((opcion) => {
     opcion.addEventListener('change', mostrarModo);
   });
@@ -529,7 +547,7 @@
   }
 
   // --- Medidas recomendadas: avisa (sin bloquear) si la imagen no es ideal ---
-  const MEDIDAS = { logo: 660, sello: 300 };
+  const MEDIDAS = { logo: 660, sello: 300, final: 300 };
   async function revisarImagen(tipo) {
     const archivo = $(`#n-${tipo}`).files[0];
     const aviso = $(`#n-${tipo}-aviso`);
@@ -705,10 +723,12 @@
   async function pedirTira({ total, llenos, texto }) {
     const fondoSellos = $('#n-fondo-igual').checked ? $('#n-primario').value : $('#n-fondo-sellos').value;
     const { nuevas, quitadas } = cambiosEstampas();
+    const final = cambiosFinal();
     const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]], ['fondo', $('#n-fondo-foto').files[0]],
-      ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
+      ['final', final.archivo], ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
     const quitar = [...quitadas];
     if ($('#n-sello-quitar').checked) quitar.push('sello');
+    if (final.quitar) quitar.push('final');
     if ($('#n-fondo-quitar').checked) quitar.push('fondo');
 
     const numero = ++pedidoTira;
@@ -766,6 +786,8 @@
       fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
+    const final = cambiosFinal();
+    if (final.quitar) cuerpo.estampa_final_url = null;
     const fondo = $('#n-fondo-foto').files[0];
     if ($('#n-fondo-quitar').checked && !fondo) cuerpo.fondo_estampas_url = null;
     if ($('#n-reglas').value !== reglasAlAbrir) cuerpo.reglas = $('#n-reglas').value;
@@ -779,6 +801,7 @@
       const sello = $('#n-sello').files[0];
       if (logo) negocio = await subirImagen(negocio.id, 'logo', logo);
       if (sello) negocio = await subirImagen(negocio.id, 'sello', sello);
+      if (final.archivo) negocio = await subirImagen(negocio.id, 'final', final.archivo);
       if (fondo) negocio = await subirImagen(negocio.id, 'fondo', fondo);
       negocio = await guardarEstampas(negocio);
       toast(editando ? 'Guardado. Las tarjetas se actualizan en unos minutos.' : `Negocio creado. Inscripción: ${r.url_inscripcion}`, 'exito');

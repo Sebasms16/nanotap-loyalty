@@ -104,9 +104,10 @@
             <fieldset class="campo">
               <legend>Imagen de las estampas</legend>
               <label class="casilla"><input type="radio" name="n-modo-estampas" value="misma" checked> La misma imagen para todas</label>
+              <label class="casilla"><input type="radio" name="n-modo-estampas" value="ultima"> Todas iguales y la última diferente
+                <span class="opcional">(por ejemplo, una dorada o la del premio)</span></label>
               <label class="casilla"><input type="radio" name="n-modo-estampas" value="distintas"> Una imagen distinta por estampa</label>
-              <p class="aviso-imagen" id="n-modo-aviso" hidden>Al guardar se quitarán las imágenes que tiene cada estampa
-                y todas usarán la misma.</p>
+              <p class="aviso-imagen" id="n-modo-aviso" hidden></p>
             </fieldset>
 
             <div class="campo" id="n-campo-misma">
@@ -119,6 +120,17 @@
               </div>
               <label class="casilla" id="n-sello-quitar-fila" hidden><input id="n-sello-quitar" type="checkbox"> Quitar y usar el logo</label>
               <p class="aviso-imagen" id="n-sello-aviso" hidden></p>
+            </div>
+
+            <div class="campo" id="n-campo-final" hidden>
+              <label for="n-final">Imagen de la última estampa</label>
+              <p class="ayuda">La que completa la tarjeta. Mismas medidas que la anterior: cuadrada, de <strong>300 × 300 px</strong>
+                o más, en PNG con fondo transparente. Siempre va en la última posición, aunque después cambie la cantidad de estampas.</p>
+              <div class="subida">
+                <img id="n-final-actual" class="miniatura" alt="Última estampa actual" hidden>
+                <input id="n-final" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+              </div>
+              <p class="aviso-imagen" id="n-final-aviso" hidden></p>
             </div>
 
             <fieldset class="campo" id="n-campo-distintas" hidden>

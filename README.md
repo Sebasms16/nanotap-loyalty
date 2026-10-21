@@ -143,7 +143,7 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   centro la zona de estampas; abajo el premio, cuántas faltan y el QR. Los datos del cliente van al reverso (Apple)
   o al detalle (Google).
 - **Estampas:** cada estampa es el logo del negocio o una imagen general de estampa, y además cada posición puede
-  tener **su propia imagen** (por ejemplo, la última con la foto del premio); las que no tienen usan la general. La
+  tener **su propia imagen** (por ejemplo, la última con la foto del premio); las que no tienen usan la general. Hay un modo intermedio, «todas iguales y la última diferente» (`estampa_final_url`): la imagen va siempre en la última posición, aunque cambie la cantidad de estampas. La
   forma de la imagen se respeta (sin recorte en círculo). La estampa obtenida se ve **a color**; la que falta, según
   elija el negocio, **en gris tenue** o **oculta** (círculo vacío, sin revelar la imagen). Sin ninguna imagen, se
   dibujan círculos con los colores del negocio. La imagen se genera en el servidor (`services/estampas.service.js`);
@@ -217,7 +217,7 @@ Las rutas de la sección 8 de la especificación, más:
 | `GET` | `/api/operador/clientes?negocio_id=&q=` | Operador | Buscar clientes (teléfono, correo, nombre) |
 | `GET` | `/api/operador/estado` | Operador | Wallets configurados, vencimiento de certificados, reintentos pendientes |
 | `PATCH` | `/api/negocios/:id` | Operador | Editar / activar / desactivar; re-sincroniza las tarjetas si cambia la marca |
-| `POST` | `/api/negocios/:id/imagenes/:tipo` | Operador | Subir el logo (`logo`), la imagen general de la estampa (`sello`) o la foto de fondo de las estampas (`fondo`) |
+| `POST` | `/api/negocios/:id/imagenes/:tipo` | Operador | Subir el logo (`logo`), la imagen general de la estampa (`sello`), la de la última estampa (`final`) o la foto de fondo de las estampas (`fondo`) |
 | `POST`/`DELETE` | `/api/negocios/:id/estampas/:posicion` | Operador | Subir / quitar la imagen propia de una estampa (1 a 30) |
 | `GET`/`POST` | `/api/negocios/:id/staff` | Operador | Listar / crear usuarios de staff |
 | `PATCH` | `/api/staff/:id` | Operador | Activar/desactivar, nombre, nueva contraseña |

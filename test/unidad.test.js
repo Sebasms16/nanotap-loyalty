@@ -506,3 +506,31 @@ test('estampas ocultas: el aro punteado se distingue del fondo aunque el texto s
   }
   assert.ok(verde, 'el aro de la estampa oculta no se ve sobre el fondo');
 });
+
+test('última estampa diferente: va siempre al final, aunque cambie la cantidad de estampas', async () => {
+  const sharp = require('sharp');
+  const marca = require('../src/services/marca.service');
+  const cuadro = (r, g, b) => sharp({ create: { width: 300, height: 300, channels: 4, background: { r, g, b, alpha: 1 } } })
+    .png().toBuffer();
+  const [rojo, dorado] = await Promise.all([cuadro(255, 0, 0), cuadro(212, 160, 23)]);
+  const centros = async (png, total) => {
+    const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+    return imagen.distribuirEstampas(total, 750, 246).centros.map(({ x, y }) => {
+      const p = (Math.round(y) * info.width + Math.round(x)) * info.channels;
+      return [...data.subarray(p, p + 3)];
+    });
+  };
+  const base = { ...negocio, color_fondo_sellos: '#000000', sello_url: rojo, estampa_final_url: dorado, estampas_urls: [] };
+  for (const total of [4, 6]) {
+    const colores = await centros(await marca.tiraDelNegocio({ ...base, sellos_para_premio: total }, total), total);
+    assert.deepEqual(colores.slice(0, -1), Array(total - 1).fill([255, 0, 0]), `con ${total} estampas`);
+    assert.deepEqual(colores.at(-1), [212, 160, 23], `con ${total} estampas`);
+  }
+  // Una imagen propia en la última posición manda sobre la de la última estampa.
+  const propia = await centros(await marca.tiraDelNegocio({ ...base, sellos_para_premio: 3, estampas_urls: [null, null, rojo] }, 3), 3);
+  assert.deepEqual(propia.at(-1), [255, 0, 0]);
+  // Cambiarla cambia la versión (Google descarga de nuevo); sin ella, la versión de siempre.
+  const sinFinal = { ...negocio, estampas_urls: [] };
+  assert.notEqual(marca.versionTira({ ...sinFinal, estampa_final_url: 'https://x/oro.png' }), marca.versionTira(sinFinal));
+  assert.equal(marca.versionTira({ ...sinFinal, estampa_final_url: null }), marca.versionTira(sinFinal));
+});

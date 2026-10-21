@@ -11,7 +11,8 @@ const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
 const BUCKET = 'marcas';
-const TIPOS = { logo: 'logo_url', sello: 'sello_url', fondo: 'fondo_estampas_url' };
+// final: la imagen de la última estampa (la del premio), distinta de las demás.
+const TIPOS = { logo: 'logo_url', sello: 'sello_url', final: 'estampa_final_url', fondo: 'fondo_estampas_url' };
 let bucketListo = false;
 
 async function asegurarBucket() {
@@ -121,8 +122,9 @@ function versionTira(negocio) {
   return crypto.createHash('sha1')
     .update([VERSION_DIBUJO, negocio.sello_url, negocio.logo_url, fondoSellos(negocio), negocio.color_secundario, negocio.sellos_para_premio,
       JSON.stringify(estampasPropias(negocio)), negocio.estampas_pendientes,
-      // Solo si hay foto: así no cambia la versión (ni se re-descarga nada) en los negocios sin foto.
-      ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : [])].join('|'))
+      // Solo si hay foto o última estampa propia: así no cambia la versión (ni se re-descarga nada) en los demás.
+      ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : []),
+      ...(negocio.estampa_final_url ? [`final:${negocio.estampa_final_url}`] : [])].join('|'))
     .digest('hex').slice(0, 10);
 }
 
@@ -131,13 +133,15 @@ function versionLogo(negocio) {
     .digest('hex').slice(0, 10);
 }
 
-// Imagen de cada posición: la propia, o la general (estampa o logo), o null.
+// Imagen de cada posición: la propia, o (en la última) la de la última estampa,
+// o la general (estampa o logo), o null.
 // Las URLs repetidas se descargan una sola vez y comparten el mismo Buffer.
 async function imagenesDeEstampas(negocio) {
   const contexto = { negocio_id: negocio.id };
   const propias = estampasPropias(negocio);
-  const urls = Array.from({ length: negocio.sellos_para_premio },
-    (_, i) => propias[i] || negocio.sello_url || negocio.logo_url || null);
+  const total = negocio.sellos_para_premio;
+  const urls = Array.from({ length: total }, (_, i) => propias[i]
+    || (i === total - 1 && negocio.estampa_final_url) || negocio.sello_url || negocio.logo_url || null);
   const descargas = new Map([...new Set(urls)].map((url) => [url, cargarImagen(url, contexto)]));
   return Promise.all(urls.map((url) => descargas.get(url)));
 }

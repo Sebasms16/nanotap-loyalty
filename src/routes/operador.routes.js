@@ -91,7 +91,7 @@ router.get('/estado', requiereOperador, async (req, res) => {
 // Parte de las imágenes guardadas del negocio (?negocio_id) y les aplica los cambios
 // sin guardar: ?quitar=sello,3 (quitadas) y los archivos elegidos, que vienen
 // seguidos en el cuerpo con sus tamaños en ?partes=logo:1200,sello:800,3:950
-// (logo, sello, fondo o la posición de la estampa) y ?efecto= el de la foto de fondo.
+// (logo, sello, final, fondo o la posición de la estampa) y ?efecto= el de la foto de fondo.
 // ?fondo= es el color de la zona de estampas y ?tarjeta= el de la tarjeta.
 // Mismo dibujo que en las tarjetas.
 router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
@@ -107,12 +107,13 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     logo_url: null,
     sello_url: null,
     estampas_urls: [],
+    estampa_final_url: null,
     fondo_estampas_url: null,
     fondo_estampas_efecto: estampas.EFECTOS_FONDO.includes(req.query.efecto) ? req.query.efecto : 'nitida',
   };
   if (v.esUuid(req.query.negocio_id)) {
     const { data, error } = await supabase
-      .from('negocios').select('logo_url, sello_url, estampas_urls, fondo_estampas_url').eq('id', req.query.negocio_id).maybeSingle();
+      .from('negocios').select('logo_url, sello_url, estampas_urls, estampa_final_url, fondo_estampas_url').eq('id', req.query.negocio_id).maybeSingle();
     if (error) throw errorDb(error, 'leer imágenes para vista previa');
     if (data) Object.assign(negocio, { ...data, estampas_urls: [...(data.estampas_urls || [])] });
   }
@@ -121,6 +122,7 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
   const poner = (nombre, valor) => {
     if (nombre === 'logo' || nombre === 'sello') negocio[`${nombre}_url`] = valor;
     else if (nombre === 'fondo') negocio.fondo_estampas_url = valor;
+    else if (nombre === 'final') negocio.estampa_final_url = valor;
     else if (/^\d+$/.test(nombre) && nombre >= 1 && nombre <= 30) negocio.estampas_urls[nombre - 1] = valor;
   };
   for (const nombre of String(req.query.quitar || '').split(',')) poner(nombre, null);
