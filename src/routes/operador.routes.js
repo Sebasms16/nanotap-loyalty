@@ -110,6 +110,11 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     estampa_final_url: null,
     fondo_estampas_url: null,
     fondo_estampas_efecto: estampas.EFECTOS_FONDO.includes(req.query.efecto) ? req.query.efecto : 'nitida',
+    // Programa de puntos: ?tipo=puntos, ?metas=50,120,300 (costo de cada premio) y ?llenos= es el saldo.
+    tipo_programa: req.query.tipo === 'puntos' ? 'puntos' : 'estampas',
+    premios_puntos: String(req.query.metas || '').split(',').map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0).slice(0, 12)
+      .map((puntos, i) => ({ id: String(i), nombre: String(i), puntos })),
   };
   if (v.esUuid(req.query.negocio_id)) {
     const { data, error } = await supabase
@@ -136,7 +141,8 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     desde = hasta;
   }
 
-  const llenos = Math.min(total, Math.max(0, Number.parseInt(req.query.llenos, 10) || 0));
+  const pedido = Math.max(0, Number.parseInt(req.query.llenos, 10) || 0);
+  const llenos = negocio.tipo_programa === 'puntos' ? Math.min(pedido, 100000000) : Math.min(total, pedido);
   const png = await marca.tiraDelNegocio(negocio, llenos);
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(png);
 });

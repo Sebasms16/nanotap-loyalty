@@ -394,3 +394,14 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Foto de fondo de las estampas (operador): miniatura horizontal */
 .miniatura.foto { width: 9rem; object-fit: cover; }
 #tabla-pagos select, #tabla-pagos input[type="date"] { margin: 0; min-width: 8.5rem; }
+
+/* Programa de puntos (panel del staff): catálogo de premios */
+.izquierda { text-align: left; }
+.catalogo { display: grid; gap: 0.5rem; }
+.fila-premio { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--borde); border-radius: 12px; }
+.fila-premio.no-alcanza { opacity: 0.6; }
+
+/* Programa de puntos (operador): editor del catálogo */
+.catalogo-editor { display: grid; gap: 0.5rem; margin-bottom: 0.6rem; }
+.fila-catalogo { display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem auto; gap: 0.5rem; align-items: center; }
+.fila-catalogo input { margin: 0; }

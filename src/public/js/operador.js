@@ -202,6 +202,14 @@
     $('#n-nombre').value = n?.nombre || '';
     $('#n-slug').value = n?.slug || '';
     $('#n-slug').disabled = Boolean(n); // el slug no cambia: rompería los enlaces y QR impresos
+    // Programa: estampas o puntos (antes de pintar los niveles, que dependen de él).
+    document.querySelector(`input[name="n-tipo"][value="${n?.tipo_programa === 'puntos' ? 'puntos' : 'estampas'}"]`).checked = true;
+    $('#n-colones-punto').value = n?.colones_por_punto || 1000;
+    $('#n-catalogo').replaceChildren(...(Array.isArray(n?.premios_puntos) ? n.premios_puntos : []).map(filaCatalogo));
+    $('#n-factura-obligatoria').checked = Boolean(n?.puntos_factura_obligatoria);
+    $('#n-tope').value = n?.puntos_tope_compra ?? '';
+    $('#n-espera').value = n?.puntos_espera_minutos ?? '';
+    mostrarTipo();
     $('#n-logo').value = '';
     $('#n-sello').value = '';
     $('#n-sello-quitar').checked = false;
@@ -241,7 +249,7 @@
     const pendientes = n?.estampas_pendientes === 'ocultas' ? 'ocultas' : 'gris';
     document.querySelector(`input[name="n-pendientes"][value="${pendientes}"]`).checked = true;
     reiniciarEstampas();
-    $('#n-prev-llenos').value = 3;
+    ponerSaldoPrevio();
     actualizarVistaPrevia();
     mensaje($('#error-negocio'), '');
     $('#form-negocio').hidden = false;
@@ -290,17 +298,22 @@
   // --- Niveles por temporada -----------------------------------------------------
   // Mismos niveles y valores por defecto que el servidor (services/niveles.service.js).
   const NIVELES = [
-    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0 },
-    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2 },
-    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4 },
-    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6 },
+    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0, puntos: 0 },
+    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2, puntos: 500 },
+    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4, puntos: 1500 },
+    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6, puntos: 3000 },
   ];
   for (let meses = 1; meses <= 12; meses++) {
     $('#n-temporada-meses').append(el('option', { value: meses }, `${meses} ${meses === 1 ? 'mes' : 'meses'}`));
   }
 
+  // La meta de cada nivel va en tarjetas canjeadas (estampas) o en puntos ganados (puntos).
+  const metaDeNivel = () => (tipoPrograma() === 'puntos' ? 'puntos' : 'tarjetas');
+
   function pintarNiveles(n) {
     const propios = Array.isArray(n?.niveles) ? n.niveles : [];
+    const meta = metaDeNivel();
+    const conPuntos = meta === 'puntos';
     const filas = NIVELES.map((nivel) => {
       const propio = propios.find((p) => p?.clave === nivel.clave) || {};
       return el('div', { class: 'fila-nivel' },
@@ -308,18 +321,22 @@
         nivel.clave === 'bronce'
           ? el('span', { class: 'desde-inscripcion' }, 'Desde la inscripción')
           : el('input', {
-            type: 'number', min: 1, max: 100, value: propio.tarjetas ?? nivel.tarjetas, 'data-tarjetas': nivel.clave,
-            'aria-label': `Tarjetas canjeadas para llegar a ${nivel.nombre}`,
+            type: 'number', min: 1, max: conPuntos ? 100000000 : 100, value: propio[meta] ?? nivel[meta], 'data-tarjetas': nivel.clave,
+            'aria-label': `${conPuntos ? 'Puntos ganados' : 'Tarjetas canjeadas'} para llegar a ${nivel.nombre}`,
           }),
         el('input', {
           class: 'premio-nivel', type: 'text', maxlength: 120, value: propio.premio || '', 'data-premio-nivel': nivel.clave,
-          placeholder: 'Igual a la descripción del premio', 'aria-label': `Premio del nivel ${nivel.nombre}`,
+          placeholder: conPuntos ? 'Beneficio (opcional)' : 'Igual a la descripción del premio',
+          'aria-label': `${conPuntos ? 'Beneficio' : 'Premio'} del nivel ${nivel.nombre}`,
         }));
     });
     $('#n-niveles').replaceChildren(
       el('div', { class: 'fila-nivel encabezado' },
-        el('span', {}, 'Nivel'), el('span', {}, 'Tarjetas para llegar'), el('span', {}, 'Premio de este nivel')),
+        el('span', {}, 'Nivel'), el('span', {}, conPuntos ? 'Puntos en la temporada' : 'Tarjetas para llegar'),
+        el('span', {}, conPuntos ? 'Beneficio de este nivel' : 'Premio de este nivel')),
       ...filas);
+    $('#n-niveles-ayuda-puntos').hidden = !conPuntos;
+    $('#n-niveles-ayuda-estampas').hidden = conPuntos;
   }
 
   const nivelesActivos = () => $('#n-niveles-activos').checked;
@@ -365,15 +382,93 @@
   // Lo que se envía al guardar (solo si los niveles están activos: si no, se conserva lo anterior).
   function datosDeNiveles() {
     if (!nivelesActivos()) return { niveles_activos: false };
+    // Se manda la meta que se ve; la del otro programa se conserva como estaba guardada.
+    const meta = metaDeNivel();
+    const otra = meta === 'puntos' ? 'tarjetas' : 'puntos';
+    const guardados = Array.isArray(editando?.niveles) ? editando.niveles : [];
     return {
       niveles_activos: true,
-      niveles: NIVELES.map((nivel) => ({
-        clave: nivel.clave,
-        tarjetas: nivel.clave === 'bronce' ? 0 : Number(document.querySelector(`[data-tarjetas="${nivel.clave}"]`).value),
-        premio: document.querySelector(`[data-premio-nivel="${nivel.clave}"]`).value,
-      })),
+      niveles: NIVELES.map((nivel) => {
+        const guardado = guardados.find((p) => p?.clave === nivel.clave) || {};
+        return {
+          clave: nivel.clave,
+          [meta]: nivel.clave === 'bronce' ? 0 : Number(document.querySelector(`[data-tarjetas="${nivel.clave}"]`).value),
+          ...(Number.isInteger(guardado[otra]) ? { [otra]: guardado[otra] } : {}),
+          premio: document.querySelector(`[data-premio-nivel="${nivel.clave}"]`).value,
+        };
+      }),
       temporada_meses: Number($('#n-temporada-meses').value),
       temporada_inicio: $('#n-temporada-inicio').value || null,
+    };
+  }
+
+  // --- Programa de puntos ----------------------------------------------------------
+  const tipoPrograma = () => document.querySelector('input[name="n-tipo"]:checked').value;
+  const numeroCR = (n) => Number(n).toLocaleString('es-CR');
+
+  // Una fila del catálogo: nombre y puntos. El id de los premios guardados se
+  // conserva para que el staff siga canjeando el mismo premio.
+  function filaCatalogo(premio = {}) {
+    const fila = el('div', { class: 'fila-catalogo', 'data-id': premio.id || '' },
+      el('input', { type: 'text', maxlength: 60, value: premio.nombre || '', placeholder: 'Ej.: Café americano', 'aria-label': 'Premio' }),
+      el('input', { type: 'number', min: 1, value: premio.puntos ?? '', placeholder: 'Puntos', 'aria-label': 'Puntos que cuesta' }),
+      el('button', { type: 'button', class: 'boton chico secundario', 'aria-label': 'Quitar este premio' }, 'Quitar'));
+    fila.querySelector('button').addEventListener('click', () => { fila.remove(); actualizarVistaPrevia(); });
+    return fila;
+  }
+  $('#n-agregar-premio').addEventListener('click', () => {
+    if ($('#n-catalogo').children.length >= 12) return toast('El catálogo admite hasta 12 premios.', 'error');
+    const fila = filaCatalogo();
+    $('#n-catalogo').append(fila);
+    fila.querySelector('input').focus();
+  });
+
+  // Premios completos (con nombre y puntos), del más barato al más caro.
+  function catalogoActual() {
+    return [...$('#n-catalogo').children].map((fila) => {
+      const [nombre, puntos] = fila.querySelectorAll('input');
+      return { id: fila.dataset.id || undefined, nombre: nombre.value.trim(), puntos: Number(puntos.value) };
+    }).filter((p) => p.nombre && Number.isInteger(p.puntos) && p.puntos > 0).sort((a, b) => a.puntos - b.puntos);
+  }
+
+  function mostrarTipo() {
+    const conPuntos = tipoPrograma() === 'puntos';
+    $('#n-config-puntos').hidden = !conPuntos;
+    $('#n-bloque-estampas').hidden = conPuntos;
+    $('#n-fila-premio-estampas').hidden = conPuntos;
+    const colones = Number($('#n-colones-punto').value) || 1000;
+    $('#n-regla-puntos').textContent = `1 punto por cada ₡${numeroCR(colones)}: una compra de ₡12 500 suma `
+      + `${numeroCR(Math.floor(12500 / colones))} puntos.`;
+  }
+  document.querySelectorAll('input[name="n-tipo"]').forEach((opcion) => opcion.addEventListener('change', () => {
+    pintarNiveles(editando); // la meta de los niveles cambia de tarjetas a puntos
+    ponerSaldoPrevio();
+    mostrarTipo();
+    actualizarVistaPrevia();
+  }));
+  $('#n-colones-punto').addEventListener('input', mostrarTipo);
+
+  // Valor inicial del control de la vista previa: 3 estampas, o con puntos el 40 % del
+  // premio más caro. El máximo se sube antes: un range recorta el valor a su máximo actual.
+  function ponerSaldoPrevio() {
+    const rango = $('#n-prev-llenos');
+    const conPuntos = tipoPrograma() === 'puntos';
+    const tope = conPuntos ? Math.max(100, ...catalogoActual().map((p) => p.puntos)) : 30;
+    rango.max = tope;
+    rango.value = conPuntos ? Math.round(tope * 0.4) : 3;
+  }
+
+  // Lo que se envía al guardar. Con estampas no se mandan: lo de puntos queda como estaba.
+  function datosDePuntos() {
+    if (tipoPrograma() !== 'puntos') return { tipo_programa: 'estampas' };
+    const entero = (selector) => (String($(selector).value).trim() === '' ? null : Number($(selector).value));
+    return {
+      tipo_programa: 'puntos',
+      colones_por_punto: Number($('#n-colones-punto').value),
+      premios_puntos: catalogoActual(),
+      puntos_factura_obligatoria: $('#n-factura-obligatoria').checked,
+      puntos_tope_compra: entero('#n-tope'),
+      puntos_espera_minutos: entero('#n-espera'),
     };
   }
 
@@ -597,11 +692,15 @@
 
   function actualizarVistaPrevia() {
     const nombre = $('#n-nombre').value.trim() || 'Nombre del negocio';
-    const total = Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
+    const conPuntos = tipoPrograma() === 'puntos';
+    const metas = conPuntos ? catalogoActual().map((p) => p.puntos) : [];
+    // Con puntos, el control de la vista previa es el saldo (hasta el premio más caro).
+    const total = conPuntos ? Math.max(100, ...metas) : Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
     const rango = $('#n-prev-llenos');
     rango.max = total;
     const llenos = Math.min(Number(rango.value), total);
-    $('#n-prev-llenos-valor').textContent = `${llenos} de ${total}`;
+    $('#n-prev-que').textContent = conPuntos ? 'Puntos' : 'Estampas obtenidas';
+    $('#n-prev-llenos-valor').textContent = conPuntos ? `${numeroCR(llenos)} puntos` : `${llenos} de ${total}`;
     const premio = $('#n-premio').value.trim() || 'Premio';
     const fondo = $('#n-primario').value;
     const texto = $('#n-secundario').value;
@@ -625,6 +724,25 @@
     document.querySelector('.vista-tarjeta [data-etiqueta-contador-largo]').textContent = conNiveles ? 'Nivel' : 'Estampas';
     document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = conNiveles ? '🥉 Bronce' : `${llenos} / ${total}`;
     document.querySelector('.vista-tarjeta [data-faltan]').textContent = faltan === 0 ? '¡Listo!' : String(faltan);
+    document.querySelector('.vista-tarjeta [data-etiqueta-premio]').textContent = 'PREMIO';
+    document.querySelector('.vista-tarjeta [data-etiqueta-premio-largo]').textContent = 'Premio';
+    if (conPuntos) {
+      // Lo mismo que muestran las tarjetas de puntos: saldo, próximo premio y cuánto falta.
+      const catalogo = catalogoActual();
+      const siguiente = catalogo.find((p) => p.puntos > llenos);
+      const premioVista = siguiente || catalogo[catalogo.length - 1];
+      document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => { n.textContent = premioVista?.nombre || '—'; });
+      document.querySelector('.vista-tarjeta [data-etiqueta-premio]').textContent = premioVista && !siguiente ? 'PUEDE CANJEAR' : 'PRÓXIMO PREMIO';
+      document.querySelector('.vista-tarjeta [data-etiqueta-premio-largo]').textContent = 'Próximo premio';
+      if (!conNiveles) {
+        document.querySelector('.vista-tarjeta [data-etiqueta-contador]').textContent = 'PUNTOS';
+        document.querySelector('.vista-tarjeta [data-contador]').textContent = numeroCR(llenos);
+        document.querySelector('.vista-tarjeta [data-etiqueta-contador-largo]').textContent = 'Puntos';
+        document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = numeroCR(llenos);
+      }
+      document.querySelector('.vista-tarjeta [data-faltan]').textContent = !premioVista ? '—'
+        : siguiente ? numeroCR(siguiente.puntos - llenos) : '¡Listo!';
+    }
 
     // Logo: el archivo recién elegido, o el guardado, o el ícono genérico.
     const archivoLogo = $('#n-logo').files[0];
@@ -740,6 +858,8 @@
       negocio_id: editando?.id || '',
       pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       efecto: $('#n-fondo-efecto').value,
+      tipo: tipoPrograma(),
+      metas: tipoPrograma() === 'puntos' ? catalogoActual().map((p) => p.puntos).join(',') : '',
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });
@@ -782,6 +902,7 @@
       estampas_pendientes: document.querySelector('input[name="n-pendientes"]:checked').value,
       ocultar_nombre: $('#n-ocultar-nombre').checked,
       ...datosDeNiveles(),
+      ...datosDePuntos(),
       inactividad_meses: $('#n-inactividad-activa').checked ? mesesInactividad() : null,
       fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };

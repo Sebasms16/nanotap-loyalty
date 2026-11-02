@@ -7,11 +7,13 @@ const googleWallet = require('./googleWallet.service');
 const log = require('../utils/logger');
 const { reglasDelNegocio } = require('../utils/reglas');
 const niveles = require('./niveles.service');
+const puntos = require('./puntos.service');
 const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
 
 const CAMPOS_PUBLICOS_NEGOCIO = 'id, nombre, slug, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, reglas, activo, '
-  + 'niveles_activos, niveles, temporada_meses, temporada_inicio, inactividad_meses';
+  + 'niveles_activos, niveles, temporada_meses, temporada_inicio, inactividad_meses, '
+  + 'tipo_programa, colones_por_punto, premios_puntos, puntos_factura_obligatoria';
 
 async function negocioActivoPorSlug(slug) {
   const { data, error } = await supabase
@@ -30,6 +32,8 @@ function negocioPublico(n) {
     descripcion_premio: niveles.activos(n) ? niveles.configuracion(n)[0].premio : n.descripcion_premio,
     niveles_activos: niveles.activos(n),
     reglas: reglasDelNegocio(n),
+    tipo_programa: n.tipo_programa || 'estampas',
+    puntos: puntos.paraMostrar(n, 0), // regla y catálogo; null si usa estampas
   };
 }
 
@@ -89,6 +93,7 @@ async function tarjetaParaCliente(cliente, negocio, existente) {
       nombre: cliente.nombre,
       codigo_qr: cliente.codigo_qr,
       sellos_actuales: cliente.sellos_actuales,
+      puntos: cliente.puntos || 0,
       premios_canjeados: cliente.premios_canjeados,
     },
     negocio: negocioPublico(negocio),

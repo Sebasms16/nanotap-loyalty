@@ -9,6 +9,7 @@ const env = require('../config/env');
 const marca = require('./marca.service');
 const niveles = require('./niveles.service');
 const inactividad = require('./inactividad.service');
+const puntosSvc = require('./puntos.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -63,7 +64,7 @@ function construirClase(negocio, { logoAncho = false } = {}) {
   return {
     id: idClase(negocio),
     issuerName: negocio.nombre,
-    programName: 'Tarjeta de estampas',
+    programName: puntosSvc.esPuntos(negocio) ? 'Tarjeta de puntos' : 'Tarjeta de estampas',
     programLogo: { sourceUri: { uri: urlLogo(negocio) }, contentDescription: descripcionLogo },
     ...(logoAncho && negocio.logo_url ? {
       wideProgramLogo: {
@@ -78,8 +79,58 @@ function construirClase(negocio, { logoAncho = false } = {}) {
   };
 }
 
+// Con programa de puntos: el saldo va en el campo de puntos que Google muestra
+// grande, y la franja es una barra de avance hacia los premios.
+function objetoConPuntos(cliente, negocio, estado, base) {
+  const saldo = cliente.puntos || 0;
+  const sig = puntosSvc.proximo(negocio, saldo);
+  const catalogo = puntosSvc.catalogo(negocio);
+  const enPuntos = { label: 'Puntos', balance: { int: saldo } };
+  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?puntos=${saldo}&v=${marca.versionTira(negocio)}`;
+  return {
+    ...base,
+    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } } : enPuntos,
+    secondaryLoyaltyPoints: estado ? enPuntos : { label: 'Próximo premio', balance: { string: sig ? sig.premio.nombre : '—' } },
+    heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${saldo} puntos`) },
+    textModulesData: [
+      ...(sig ? [sig.faltan === 0
+        ? { id: 'premio', header: '¡Premio disponible!', body: `Ya le alcanza para: ${sig.premio.nombre}.` }
+        : { id: 'premio', header: 'Faltan', body: `${puntosSvc.formatoPuntos(sig.faltan)} puntos para su próximo premio: ${sig.premio.nombre}.` }] : []),
+      ...(catalogo.length ? [{
+        id: 'catalogo', header: 'Premios',
+        body: catalogo.map((p) => `${p.nombre}: ${puntosSvc.formatoPuntos(p.puntos)} puntos`).join('\n'),
+      }] : []),
+      ...(estado ? [{ id: 'nivel', header: 'Nivel y temporada', body: niveles.resumen(estado) }] : []),
+      ...(estado?.premio ? [{ id: 'beneficio', header: 'Beneficio de su nivel', body: estado.premio }] : []),
+      ...base.textModulesData,
+    ],
+  };
+}
+
 // estado: nivel del cliente (niveles.estadoDelCliente), null si el negocio no usa niveles.
 function construirObjeto(cliente, negocio, estado = null) {
+  if (puntosSvc.esPuntos(negocio)) {
+    const vigencia = inactividad.aviso(cliente, negocio);
+    return objetoConPuntos(cliente, negocio, estado, {
+      id: idObjeto(cliente.id),
+      classId: idClase(negocio),
+      state: 'ACTIVE',
+      accountId: cliente.codigo_qr,
+      accountName: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' '),
+      barcode: { type: 'QR_CODE', value: cliente.codigo_qr, alternateText: cliente.codigo_qr },
+      textModulesData: [
+        ...(vigencia ? [{ id: 'vigencia', header: 'Vigencia de los puntos', body: vigencia }] : []),
+        { id: 'canjeados', header: 'Premios canjeados', body: String(cliente.premios_canjeados) },
+        { id: 'reglas', header: 'Reglas del programa', body: reglasComoTexto(negocio) },
+      ],
+      linksModuleData: {
+        uris: [
+          { id: 'consulta', uri: `${env.baseUrl}/${negocio.slug}/consulta`, description: 'Consultar mis puntos' },
+          { id: 'privacidad', uri: `${env.baseUrl}/${negocio.slug}/privacidad`, description: 'Aviso de privacidad' },
+        ],
+      },
+    });
+  }
   const meta = negocio.sellos_para_premio;
   const sellos = cliente.sellos_actuales;
   const disponible = sellos >= meta;

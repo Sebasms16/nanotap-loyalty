@@ -12,7 +12,11 @@
     aplicarMarca(negocio);
     document.title = `Tarjeta de lealtad · ${negocio.nombre}`;
     $('#nombre-negocio').textContent = negocio.nombre;
-    $('#regla').textContent = `Junte ${negocio.sellos_para_premio} sellos y reciba: ${negocio.descripcion_premio}`;
+    // Con puntos: la regla de acumulación y el premio más barato del catálogo.
+    const premioMasBarato = negocio.puntos?.premios?.[0];
+    $('#regla').textContent = negocio.puntos
+      ? `Gane ${negocio.puntos.regla} y cámbielos por premios${premioMasBarato ? ` desde ${premioMasBarato.puntos} puntos` : ''}.`
+      : `Junte ${negocio.sellos_para_premio} sellos y reciba: ${negocio.descripcion_premio}`;
     if (negocio.logo_url) {
       $('#logo').src = negocio.logo_url;
       $('#logo').alt = negocio.nombre;
@@ -48,10 +52,13 @@
     $('#formulario').hidden = true;
     $('#resultado').hidden = false;
     $('#saludo').textContent = r.existente ? `¡Hola de nuevo, ${r.cliente.nombre}!` : `¡Listo, ${r.cliente.nombre}!`;
+    const conPuntos = Boolean(r.negocio.puntos);
     $('#subtitulo').textContent = r.existente
-      ? `Ya tenía una tarjeta con nosotros. Lleva ${r.cliente.sellos_actuales} de ${r.negocio.sellos_para_premio} sellos.`
-      : 'Guarde su tarjeta en el teléfono para empezar a sumar sellos.';
-    $('#sellos').replaceChildren(circulosSellos(Math.min(r.cliente.sellos_actuales, r.negocio.sellos_para_premio), r.negocio.sellos_para_premio));
+      ? (conPuntos ? `Ya tenía una tarjeta con nosotros. Lleva ${r.cliente.puntos} puntos.`
+        : `Ya tenía una tarjeta con nosotros. Lleva ${r.cliente.sellos_actuales} de ${r.negocio.sellos_para_premio} sellos.`)
+      : `Guarde su tarjeta en el teléfono para empezar a sumar ${conPuntos ? 'puntos' : 'sellos'}.`;
+    $('#sellos').replaceChildren(...(conPuntos ? []
+      : [circulosSellos(Math.min(r.cliente.sellos_actuales, r.negocio.sellos_para_premio), r.negocio.sellos_para_premio)]));
     $('#qr').src = r.qr;
     $('#codigo').textContent = r.cliente.codigo_qr;
 

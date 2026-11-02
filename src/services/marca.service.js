@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const supabase = require('../db/supabaseClient');
 const estampas = require('./estampas.service');
 const imagen = require('./imagen.service');
+const puntos = require('./puntos.service');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
@@ -124,7 +125,9 @@ function versionTira(negocio) {
       JSON.stringify(estampasPropias(negocio)), negocio.estampas_pendientes,
       // Solo si hay foto o última estampa propia: así no cambia la versión (ni se re-descarga nada) en los demás.
       ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : []),
-      ...(negocio.estampa_final_url ? [`final:${negocio.estampa_final_url}`] : [])].join('|'))
+      ...(negocio.estampa_final_url ? [`final:${negocio.estampa_final_url}`] : []),
+      // Con puntos, la barra depende del catálogo (las marcas de cada premio).
+      ...(puntos.esPuntos(negocio) ? [`puntos:${puntos.catalogo(negocio).map((p) => p.puntos).join(',')}`] : [])].join('|'))
     .digest('hex').slice(0, 10);
 }
 
@@ -174,6 +177,15 @@ async function fondoDelNegocio(negocio, { ancho, alto }) {
 // gris o círculo vacío). Sin ninguna imagen: círculos con los colores del negocio.
 // Con foto de fondo, las estampas van sobre la foto en vez del color.
 async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {}) {
+  // Programa de puntos: `llenos` es el saldo y la franja es una barra de avance.
+  if (puntos.esPuntos(negocio)) {
+    const base = await fondoDelNegocio(negocio, { ancho, alto });
+    return estampas.tiraPuntos({
+      puntos: Math.max(0, llenos), metas: puntos.catalogo(negocio).map((p) => p.puntos),
+      fondo: fondoSellos(negocio), sello: negocio.color_secundario || '#ffffff', tarjeta: negocio.color_primario,
+      ancho, alto, base,
+    });
+  }
   const total = negocio.sellos_para_premio;
   const obtenidas = Math.min(Math.max(llenos, 0), total);
   const fondo = fondoSellos(negocio);

@@ -47,7 +47,8 @@ async function negocioParaImagen(id, version, calcularVersion = marca.versionTir
   const { data, error } = await supabase
     .from('negocios')
     .select('id, logo_url, sello_url, color_primario, color_secundario, color_fondo_sellos, sellos_para_premio, '
-      + 'estampas_urls, estampa_final_url, estampas_pendientes, fondo_estampas_url, fondo_estampas_efecto')
+      + 'estampas_urls, estampa_final_url, estampas_pendientes, fondo_estampas_url, fondo_estampas_efecto, '
+      + 'tipo_programa, premios_puntos')
     .eq('id', id).maybeSingle();
   if (error) throw errorDb(error, 'leer negocio para imagen');
   if (negocios.size >= 100) negocios.delete(negocios.keys().next().value);
@@ -59,7 +60,10 @@ router.get('/negocios/:id/estampas.png', async (req, res) => {
   if (!esUuid(req.params.id)) return res.sendStatus(404);
   const negocio = await negocioParaImagen(req.params.id, req.query.v);
   if (!negocio) return res.sendStatus(404);
-  const llenos = entre(req.query.llenos, 0, negocio.sellos_para_premio, 0);
+  // Programa de puntos: ?puntos=saldo (la barra se llena hasta el premio más caro).
+  const llenos = negocio.tipo_programa === 'puntos'
+    ? entre(req.query.puntos, 0, 100000000, 0)
+    : entre(req.query.llenos, 0, negocio.sellos_para_premio, 0);
   enviarPng(res, await marca.tiraDelNegocio(negocio, llenos));
 });
 

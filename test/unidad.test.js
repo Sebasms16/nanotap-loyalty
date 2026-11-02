@@ -534,3 +534,62 @@ test('última estampa diferente: va siempre al final, aunque cambie la cantidad 
   assert.notEqual(marca.versionTira({ ...sinFinal, estampa_final_url: 'https://x/oro.png' }), marca.versionTira(sinFinal));
   assert.equal(marca.versionTira({ ...sinFinal, estampa_final_url: null }), marca.versionTira(sinFinal));
 });
+
+test('programa de puntos: próximo premio, tarjeta de Apple y de Google, reglas y franja', async () => {
+  const puntos = require('../src/services/puntos.service');
+  const reglas = require('../src/utils/reglas');
+  const marca = require('../src/services/marca.service');
+  const sharp = require('sharp');
+  const neg = {
+    ...negocio, tipo_programa: 'puntos', colones_por_punto: 500,
+    premios_puntos: [{ id: 'p', nombre: 'Postre', puntos: 40 }, { id: 'c', nombre: 'Café', puntos: 10 }],
+  };
+  assert.equal(puntos.calcular(neg, 12499), 24); // hacia abajo
+  assert.deepEqual(puntos.catalogo(neg).map((p) => p.id), ['c', 'p']); // del más barato al más caro
+  assert.deepEqual(puntos.proximo(neg, 15), { premio: neg.premios_puntos[0], faltan: 25 });
+  assert.equal(puntos.proximo(neg, 99).faltan, 0); // le alcanza todo: el más caro, sin faltante
+  assert.equal(puntos.proximo({ ...neg, premios_puntos: [] }, 5), null);
+  assert.deepEqual(puntos.paraMostrar(neg, 15).premios.map((p) => p.alcanza), [true, false]);
+  assert.equal(puntos.paraMostrar(negocio, 5), null); // negocio de estampas
+
+  const texto = reglas.reglasSugeridas(neg).join('\n');
+  assert.match(texto, /Recibe 1 punto por cada ₡500 de compra en PodoSport/);
+  assert.match(texto, /Cambie sus puntos por: Café \(10 puntos\), Postre \(40 puntos\)/);
+  assert.doesNotMatch(texto, /estampa/i);
+
+  const conSaldo = { ...cliente, puntos: 15 };
+  const objeto = googleWallet.construirObjeto(conSaldo, neg);
+  assert.deepEqual(objeto.loyaltyPoints, { label: 'Puntos', balance: { int: 15 } });
+  assert.equal(objeto.secondaryLoyaltyPoints.balance.string, 'Postre');
+  assert.match(objeto.heroImage.sourceUri.uri, /estampas\.png\?puntos=15&v=/);
+  assert.match(objeto.textModulesData.find((m) => m.id === 'premio').body, /^25 puntos para su próximo premio: Postre\.$/);
+  assert.equal(googleWallet.construirClase(neg).programName, 'Tarjeta de puntos');
+
+  const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+  const json = JSON.parse(leerZip(await appleWallet.generarPass({ cliente: conSaldo, negocio: neg, pass }))['pass.json'].toString('utf8'));
+  assert.deepEqual(json.storeCard.headerFields[0], {
+    key: 'puntos', label: 'PUNTOS', value: 15, numberStyle: 'PKNumberStyleDecimal', textAlignment: 'PKTextAlignmentRight',
+  });
+  assert.deepEqual(json.storeCard.secondaryFields.map((c) => [c.label, c.value]), [['PRÓXIMO PREMIO', 'Postre'], ['FALTAN', 25]]);
+  assert.match(json.storeCard.backFields.find((c) => c.key === 'catalogo').value, /• Café: 10 puntos\n• Postre: 40 puntos/);
+  assert.match(json.description, /Tarjeta de puntos/);
+
+  // Franja: barra con una marca por premio; cambia con el catálogo (versión nueva para Google).
+  const tira = await marca.tiraDelNegocio({ ...neg, color_fondo_sellos: '#000000', color_secundario: '#ffffff' }, 15);
+  const meta = await sharp(tira).metadata();
+  assert.deepEqual([meta.width, meta.height], [750, 246]);
+  assert.notEqual(marca.versionTira({ ...neg, premios_puntos: [{ id: 'c', nombre: 'Café', puntos: 12 }] }), marca.versionTira(neg));
+});
+
+test('niveles con puntos: suben por puntos ganados en la temporada', () => {
+  const niveles = require('../src/services/niveles.service');
+  const neg = { ...negocio, tipo_programa: 'puntos', niveles_activos: true, niveles: [{ clave: 'oro', tarjetas: 4, puntos: 1000, premio: '10 % menos' }] };
+  const temporada = niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, new Date('2026-10-14T15:00:00Z'));
+  assert.equal(niveles.describir(neg, 499, temporada).nivel.clave, 'bronce');
+  assert.equal(niveles.describir(neg, 500, temporada).nivel.clave, 'plata'); // por defecto: 500
+  const oro = niveles.describir(neg, 1200, temporada);
+  assert.deepEqual([oro.nivel.clave, oro.premio, oro.faltan], ['oro', '10 % menos', 1800]); // diamante por defecto: 3000
+  assert.match(niveles.resumen(oro), /1\s?200 puntos ganados esta temporada · faltan 1800 para 💎 Diamante/);
+  // El mismo negocio con estampas usa la meta en tarjetas.
+  assert.equal(niveles.describir({ ...neg, tipo_programa: 'estampas' }, 4, temporada).nivel.clave, 'oro');
+});

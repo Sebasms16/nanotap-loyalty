@@ -19,6 +19,9 @@ const NIVELES = [
 ];
 // Tarjetas canjeadas en la temporada para llegar a cada nivel (si el negocio no elige).
 const TARJETAS_POR_DEFECTO = { bronce: 0, plata: 2, oro: 4, diamante: 6 };
+// Con programa de puntos: puntos ganados en la temporada.
+const PUNTOS_POR_DEFECTO = { bronce: 0, plata: 500, oro: 1500, diamante: 3000 };
+const usaPuntos = (negocio) => negocio?.tipo_programa === 'puntos';
 const MESES_POR_DEFECTO = 3;
 const DESFASE_CR_MS = 6 * 60 * 60 * 1000;
 const ZONA = 'America/Costa_Rica';
@@ -26,13 +29,20 @@ const ZONA = 'America/Costa_Rica';
 const activos = (negocio) => Boolean(negocio?.niveles_activos);
 
 // Los cuatro niveles con lo que eligió el negocio. Un premio vacío usa el premio general.
+// `tarjetas` es la meta para llegar al nivel, en la unidad del programa: tarjetas
+// canjeadas (estampas) o puntos ganados (puntos), según `unidad`. Con puntos el
+// premio del nivel es un beneficio que solo se muestra (los canjes son del catálogo).
 function configuracion(negocio) {
   const propios = Array.isArray(negocio.niveles) ? negocio.niveles : [];
+  const conPuntos = usaPuntos(negocio);
+  const clave = conPuntos ? 'puntos' : 'tarjetas';
+  const porDefecto = conPuntos ? PUNTOS_POR_DEFECTO : TARJETAS_POR_DEFECTO;
   return NIVELES.map((nivel) => {
     const propio = propios.find((p) => p?.clave === nivel.clave) || {};
-    const tarjetas = nivel.clave === 'bronce' ? 0
-      : Number.isInteger(propio.tarjetas) ? propio.tarjetas : TARJETAS_POR_DEFECTO[nivel.clave];
-    return { ...nivel, tarjetas, premio: String(propio.premio || '').trim() || negocio.descripcion_premio };
+    const meta = nivel.clave === 'bronce' ? 0
+      : Number.isInteger(propio[clave]) ? propio[clave] : porDefecto[nivel.clave];
+    const premio = String(propio.premio || '').trim() || (conPuntos ? '' : negocio.descripcion_premio);
+    return { ...nivel, tarjetas: meta, unidad: clave, premio };
   });
 }
 
@@ -82,7 +92,7 @@ function fechaFin(temporada) {
 }
 
 // --- Nivel del cliente ------------------------------------------------------
-// Estado a partir de las tarjetas canjeadas en la temporada.
+// Estado a partir del avance en la temporada: tarjetas canjeadas o, con puntos, puntos ganados.
 function describir(negocio, tarjetas, temporada) {
   const niveles = configuracion(negocio);
   let i = 0;
@@ -92,6 +102,7 @@ function describir(negocio, tarjetas, temporada) {
     nivel: niveles[i],
     siguiente,
     tarjetas,
+    unidad: niveles[i].unidad,
     faltan: siguiente ? siguiente.tarjetas - tarjetas : 0,
     premio: niveles[i].premio,
     temporada,
@@ -103,6 +114,13 @@ function describir(negocio, tarjetas, temporada) {
 async function estadoDelCliente(cliente, negocio, ahora = new Date()) {
   if (!activos(negocio)) return null;
   const temporada = temporadaActual(negocio, ahora);
+  if (usaPuntos(negocio)) {
+    const { data, error } = await supabase.rpc('puntos_ganados', {
+      p_cliente_id: cliente.id, p_desde: temporada.desde.toISOString(), p_hasta: temporada.hasta.toISOString(),
+    });
+    if (error) throw errorDb(error, 'sumar puntos de la temporada');
+    return describir(negocio, data || 0, temporada);
+  }
   const { count, error } = await supabase
     .from('sellos_eventos')
     .select('id', { count: 'exact', head: true })
@@ -120,9 +138,13 @@ const etiqueta = (nivel) => `${nivel.emoji} ${nivel.nombre.toUpperCase()}`;
 const premioActual = (negocio, estado) => (estado ? estado.premio : negocio.descripcion_premio);
 
 // Texto corto para mostrar: "🥇 Oro · 5 tarjetas esta temporada · faltan 1 para 💎 Diamante".
+// Con puntos: "🥈 Plata · 820 puntos ganados esta temporada · faltan 680 para 🥇 Oro".
 function resumen(estado) {
-  const partes = [`${estado.nivel.emoji} ${estado.nivel.nombre}`,
-    `${estado.tarjetas} tarjeta${estado.tarjetas === 1 ? '' : 's'} llena${estado.tarjetas === 1 ? '' : 's'} esta temporada`];
+  const n = estado.tarjetas;
+  const avance = estado.unidad === 'puntos'
+    ? `${new Intl.NumberFormat('es-CR').format(n)} punto${n === 1 ? '' : 's'} ganado${n === 1 ? '' : 's'} esta temporada`
+    : `${n} tarjeta${n === 1 ? '' : 's'} llena${n === 1 ? '' : 's'} esta temporada`;
+  const partes = [`${estado.nivel.emoji} ${estado.nivel.nombre}`, avance];
   if (estado.siguiente) {
     partes.push(`${estado.faltan === 1 ? 'falta 1' : `faltan ${estado.faltan}`} para ${estado.siguiente.emoji} ${estado.siguiente.nombre}`);
   }
@@ -136,7 +158,9 @@ function paraMostrar(estado) {
     nivel: { clave: estado.nivel.clave, nombre: estado.nivel.nombre, emoji: estado.nivel.emoji },
     siguiente: estado.siguiente && { nombre: estado.siguiente.nombre, emoji: estado.siguiente.emoji },
     tarjetas: estado.tarjetas,
+    unidad: estado.unidad,
     faltan: estado.faltan,
+    premio: estado.premio,
     fin: estado.fin,
     resumen: resumen(estado),
   };
@@ -144,6 +168,6 @@ function paraMostrar(estado) {
 
 module.exports = {
   instanteCR, hoyCR, sumarMeses, leerFecha, aTexto,
-  NIVELES, TARJETAS_POR_DEFECTO, MESES_POR_DEFECTO,
+  NIVELES, TARJETAS_POR_DEFECTO, PUNTOS_POR_DEFECTO, MESES_POR_DEFECTO,
   activos, configuracion, temporadaActual, fechaFin, describir, estadoDelCliente, etiqueta, premioActual, resumen, paraMostrar,
 };

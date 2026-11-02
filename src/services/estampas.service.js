@@ -127,6 +127,49 @@ async function tiraConImagenes({
     .toBuffer();
 }
 
+// --- Programa de puntos: barra de avance ------------------------------------
+/**
+ * Franja de una tarjeta de puntos: una barra que se llena con el saldo y una
+ * marca por cada premio del catálogo (rellena si ya le alcanza). Sin texto: el
+ * saldo y el próximo premio van en los campos de la tarjeta.
+ * @param {number} puntos saldo del cliente
+ * @param {number[]} metas costo de cada premio, en puntos
+ */
+async function tiraPuntos({ puntos, metas, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null }) {
+  const fondoRgb = base ? await colorPromedio(base) : hexARgb(fondo);
+  const color = colorQueSeVe(fondoRgb, [sello, tarjeta]);
+  const relleno = `rgb(${fondoRgb.join(',')})`;
+  const tope = Math.max(1, ...metas);
+  // Mismo margen a los lados que las estampas, para que el iPhone no corte las marcas.
+  const x0 = ancho * 0.12;
+  const x1 = ancho * 0.88;
+  const cy = alto / 2;
+  const grosor = alto * 0.09;
+  const radio = alto * 0.13;
+  const x = (valor) => x0 + (x1 - x0) * Math.min(1, Math.max(0, valor / tope));
+  const avance = x(puntos);
+  const marcas = metas.map((meta) => {
+    const cx = x(meta);
+    if (puntos >= meta) {
+      return `<circle cx="${cx}" cy="${cy}" r="${radio}" fill="${color}"/>`
+        + `<circle cx="${cx}" cy="${cy}" r="${radio * 0.42}" fill="${relleno}"/>`;
+    }
+    const trazo = (2 * Math.PI * radio * 0.94) / 24;
+    return `<circle cx="${cx}" cy="${cy}" r="${radio * 0.94}" fill="${relleno}" stroke="${color}" stroke-opacity="0.75"`
+      + ` stroke-width="${Math.max(2, radio * 0.14)}" stroke-dasharray="${trazo} ${trazo}" stroke-linecap="round"/>`;
+  }).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}">`
+    + `<rect x="${x0}" y="${cy - grosor / 2}" width="${x1 - x0}" height="${grosor}" rx="${grosor / 2}" fill="${color}" fill-opacity="0.3"/>`
+    + (avance > x0 ? `<rect x="${x0}" y="${cy - grosor / 2}" width="${avance - x0}" height="${grosor}" rx="${grosor / 2}" fill="${color}"/>` : '')
+    + marcas
+    + '</svg>';
+  const [r, g, b] = hexARgb(fondo);
+  return sharp(base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
+    .composite([{ input: Buffer.from(svg) }])
+    .png()
+    .toBuffer();
+}
+
 // --- Foto de fondo de la zona de estampas -----------------------------------
 // Efectos que puede elegir el negocio para que las estampas se lean sobre la foto.
 const EFECTOS_FONDO = ['nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'];
@@ -239,6 +282,6 @@ async function iconoDesdeLogo(logo, tam, fondo) {
 }
 
 module.exports = {
-  tiraConImagenes, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
+  tiraConImagenes, tiraPuntos, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
   proporcionLogo, PROPORCION_ANCHO,
 };

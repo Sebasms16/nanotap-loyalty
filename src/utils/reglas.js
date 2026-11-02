@@ -3,20 +3,44 @@
 // en negocios.reglas); si no tiene, se usan estas sugeridas.
 const niveles = require('../services/niveles.service');
 const inactividad = require('../services/inactividad.service');
+const puntos = require('../services/puntos.service');
 
 function reglasDeNiveles(negocio) {
   const lista = niveles.configuracion(negocio);
   const meses = negocio.temporada_meses || niveles.MESES_POR_DEFECTO;
+  const duracion = `Cada temporada dura ${meses} ${meses === 1 ? 'mes' : 'meses'}. Al terminar, todos vuelven a Bronce`;
+  if (puntos.esPuntos(negocio)) {
+    return [
+      'Según los puntos que gane en la temporada, sube de nivel:',
+      ...lista.map((n) => {
+        const desde = n.tarjetas === 0 ? 'desde la inscripción' : `al ganar ${puntos.formatoPuntos(n.tarjetas)} puntos en la temporada`;
+        return `${n.emoji} ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
+      }),
+      `${duracion}; los puntos que tenga se conservan.`,
+    ];
+  }
   return [
     `Al completar ${negocio.sellos_para_premio} estampas recibe el premio de su nivel:`,
     ...lista.map((n) => (n.tarjetas === 0
       ? `${n.emoji} ${n.nombre} (desde la inscripción): ${n.premio}.`
       : `${n.emoji} ${n.nombre} (al canjear ${n.tarjetas} tarjetas en la temporada): ${n.premio}.`)),
-    `Cada temporada dura ${meses} ${meses === 1 ? 'mes' : 'meses'}. Al terminar, todos vuelven a Bronce; las estampas que lleve se conservan.`,
+    `${duracion}; las estampas que lleve se conservan.`,
   ];
 }
 
 function reglasSugeridas(negocio) {
+  if (puntos.esPuntos(negocio)) {
+    return [
+      ...puntos.reglasDePuntos(negocio),
+      ...(niveles.activos(negocio) ? reglasDeNiveles(negocio) : []),
+      ...(inactividad.activo(negocio) ? [inactividad.regla(negocio)] : []),
+      'Los premios no se pueden cambiar por dinero en efectivo ni por otro producto.',
+      'Los puntos no tienen valor comercial y no se otorgan por compras anteriores.',
+      'La tarjeta es personal: los puntos y premios no se pueden transferir a otra persona.',
+      'No acumulable con otras promociones, salvo que el negocio indique lo contrario.',
+      `${negocio.nombre} puede modificar o terminar el programa avisándolo con anticipación.`,
+    ];
+  }
   const total = negocio.sellos_para_premio;
   return [
     `Recibe una estampa por cada compra en ${negocio.nombre}, mostrando esta tarjeta al momento de pagar.`,

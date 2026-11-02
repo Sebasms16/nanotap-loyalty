@@ -34,18 +34,26 @@ const formato = (fecha) => new Intl.DateTimeFormat('es-CR', { day: 'numeric', mo
 
 const plazo = (meses) => `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
 
+const conPuntos = (negocio) => negocio?.tipo_programa === 'puntos';
+
 // Línea para las reglas sugeridas del programa.
 function regla(negocio) {
   const meses = negocio.inactividad_meses;
-  return `Si ${meses === 1 ? 'pasa' : 'pasan'} ${plazo(meses)} sin recibir una estampa, las estampas acumuladas vuelven a cero.`;
+  const pasan = `Si ${meses === 1 ? 'pasa' : 'pasan'} ${plazo(meses)}`;
+  return conPuntos(negocio)
+    ? `${pasan} sin sumar puntos, los puntos acumulados vuelven a cero.`
+    : `${pasan} sin recibir una estampa, las estampas acumuladas vuelven a cero.`;
 }
 
-// Aviso para el cliente (reverso de la tarjeta y consulta): con estampas, la fecha límite.
+// Aviso para el cliente (reverso de la tarjeta y consulta): con saldo, la fecha límite.
 function aviso(cliente, negocio) {
   if (!activo(negocio)) return null;
   const limite = fechaLimite(cliente, negocio);
-  if (!cliente.sellos_actuales || !limite) return regla(negocio);
-  return `Reciba su próxima estampa antes del ${formato(limite)}; si no, sus estampas vuelven a cero.`;
+  const saldo = conPuntos(negocio) ? cliente.puntos : cliente.sellos_actuales;
+  if (!saldo || !limite) return regla(negocio);
+  return conPuntos(negocio)
+    ? `Sume puntos antes del ${formato(limite)}; si no, sus puntos vuelven a cero.`
+    : `Reciba su próxima estampa antes del ${formato(limite)}; si no, sus estampas vuelven a cero.`;
 }
 
 async function reiniciarInactivos() {

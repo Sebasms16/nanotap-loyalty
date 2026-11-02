@@ -1,5 +1,6 @@
 // /api/negocios — alta y edición de negocios (operador), datos públicos,
 // inscripción de clientes (RF-02), staff del negocio y exportación CSV (RF-09).
+const crypto = require('node:crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const supabase = require('../db/supabaseClient');
@@ -18,25 +19,52 @@ const { limiteInscripcion } = require('../middlewares/limites.middleware');
 
 const router = express.Router();
 
-// Niveles: [{clave, tarjetas, premio}]. Bronce empieza en 0; los demás necesitan
-// cada vez más tarjetas canjeadas en la temporada.
+// Niveles: [{clave, tarjetas, puntos, premio}]. Bronce empieza en 0; los demás
+// necesitan cada vez más tarjetas canjeadas (estampas) o puntos ganados (puntos)
+// en la temporada. Se guardan las dos metas: el programa del negocio elige cuál usa.
 function validarNiveles(lista) {
   if (lista === null) return null;
   if (!Array.isArray(lista)) throw new HttpError(400, 'Los niveles no tienen el formato esperado.');
-  let anterior = 0;
+  let tarjetasAntes = 0;
+  let puntosAntes = 0;
   return niveles.NIVELES.map((nivel) => {
     const dado = lista.find((n) => n?.clave === nivel.clave) || {};
     const premio = v.texto(dado.premio, `premio del nivel ${nivel.nombre}`, { max: 120 }) || '';
-    if (nivel.clave === 'bronce') return { clave: nivel.clave, tarjetas: 0, premio };
+    if (nivel.clave === 'bronce') return { clave: nivel.clave, tarjetas: 0, puntos: 0, premio };
     const tarjetas = v.entero(dado.tarjetas ?? niveles.TARJETAS_POR_DEFECTO[nivel.clave],
       `tarjetas para ${nivel.nombre}`, { min: 1, max: 100 });
-    if (tarjetas <= anterior) {
+    const puntos = v.entero(dado.puntos ?? niveles.PUNTOS_POR_DEFECTO[nivel.clave],
+      `puntos para ${nivel.nombre}`, { min: 1, max: 100000000 });
+    if (tarjetas <= tarjetasAntes) {
       throw new HttpError(400, `${nivel.nombre} debe pedir más tarjetas que el nivel anterior.`);
     }
-    anterior = tarjetas;
-    return { clave: nivel.clave, tarjetas, premio };
+    if (puntos <= puntosAntes) {
+      throw new HttpError(400, `${nivel.nombre} debe pedir más puntos que el nivel anterior.`);
+    }
+    tarjetasAntes = tarjetas;
+    puntosAntes = puntos;
+    return { clave: nivel.clave, tarjetas, puntos, premio };
   });
 }
+
+// Catálogo de premios de un programa de puntos: [{id, nombre, puntos}], hasta 12.
+// Los premios nuevos reciben un id; los que ya tenían lo conservan (el staff canjea por id).
+function validarCatalogo(lista) {
+  if (!Array.isArray(lista)) throw new HttpError(400, 'El catálogo de premios no tiene el formato esperado.');
+  if (lista.length > 12) throw new HttpError(400, 'El catálogo admite hasta 12 premios.');
+  const ids = new Set();
+  return lista.map((p, i) => {
+    const nombre = v.texto(p?.nombre, `nombre del premio ${i + 1}`, { requerido: true, max: 60 });
+    const puntos = v.entero(p?.puntos, `puntos del premio "${nombre}"`, { min: 1, max: 100000000 });
+    let id = typeof p?.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(p.id) ? p.id : crypto.randomUUID();
+    if (ids.has(id)) id = crypto.randomUUID();
+    ids.add(id);
+    return { id, nombre, puntos };
+  }).sort((a, b) => a.puntos - b.puntos);
+}
+
+// Entero positivo o null (para quitar el tope o la espera).
+const enteroONulo = (valor, nombre, limites) => (valor === null || valor === '' ? null : v.entero(valor, nombre, limites));
 
 // Fecha AAAA-MM-DD válida (puede ser futura: una temporada que todavía no empieza).
 function fechaValida(valor, nombre) {
@@ -92,6 +120,21 @@ function datosNegocio(cuerpo, { parcial }) {
   if (cuerpo.fondo_estampas_url === null) d.fondo_estampas_url = null;
   if (cuerpo.fondo_estampas_efecto !== undefined) {
     d.fondo_estampas_efecto = unaDe(cuerpo.fondo_estampas_efecto, estampas.EFECTOS_FONDO, 'El efecto de la foto de fondo no es válido.');
+  }
+  // Programa de puntos (en vez de estampas) y sus reglas.
+  if (cuerpo.tipo_programa !== undefined) {
+    d.tipo_programa = unaDe(cuerpo.tipo_programa, ['estampas', 'puntos'], 'El programa debe ser de estampas o de puntos.');
+  }
+  if (cuerpo.colones_por_punto !== undefined) {
+    d.colones_por_punto = v.entero(cuerpo.colones_por_punto, 'colones por punto', { min: 1, max: 1000000 });
+  }
+  if (cuerpo.premios_puntos !== undefined) d.premios_puntos = validarCatalogo(cuerpo.premios_puntos);
+  if (cuerpo.puntos_factura_obligatoria !== undefined) d.puntos_factura_obligatoria = Boolean(cuerpo.puntos_factura_obligatoria);
+  if (cuerpo.puntos_tope_compra !== undefined) {
+    d.puntos_tope_compra = enteroONulo(cuerpo.puntos_tope_compra, 'tope por compra', { min: 1, max: 100000000 });
+  }
+  if (cuerpo.puntos_espera_minutos !== undefined) {
+    d.puntos_espera_minutos = enteroONulo(cuerpo.puntos_espera_minutos, 'minutos de espera entre compras', { min: 1, max: 1440 });
   }
   if (cuerpo.suscripcion_plan !== undefined) {
     d.suscripcion_plan = unaDe(cuerpo.suscripcion_plan, ['semestral', 'anual'], 'El plan debe ser semestral o anual.', { anulable: true });
@@ -158,7 +201,8 @@ router.patch('/:id', requiereOperador, async (req, res) => {
   const afectaTarjeta = ['nombre', 'logo_url', 'sello_url', 'estampa_final_url','color_primario', 'color_secundario', 'color_fondo_sellos',
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
-    'fondo_estampas_url', 'fondo_estampas_efecto'].some((k) => k in datos);
+    'fondo_estampas_url', 'fondo_estampas_efecto', 'tipo_programa', 'colones_por_punto', 'premios_puntos',
+    'puntos_factura_obligatoria'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });
@@ -249,6 +293,7 @@ const COLUMNAS_CLIENTES = [
   { titulo: 'correo', valor: (c) => c.correo },
   { titulo: 'codigo_qr', valor: (c) => c.codigo_qr },
   { titulo: 'sellos_actuales', valor: (c) => c.sellos_actuales },
+  { titulo: 'puntos', valor: (c) => c.puntos },
   { titulo: 'premios_canjeados', valor: (c) => c.premios_canjeados },
   { titulo: 'fecha_inscripcion', valor: (c) => c.creado_en },
 ];
@@ -256,6 +301,10 @@ const COLUMNAS_CLIENTES = [
 const COLUMNAS_EVENTOS = [
   { titulo: 'fecha', valor: (e) => e.creado_en },
   { titulo: 'tipo', valor: (e) => e.tipo },
+  { titulo: 'puntos', valor: (e) => e.cantidad },
+  { titulo: 'monto', valor: (e) => e.monto },
+  { titulo: 'factura', valor: (e) => e.factura },
+  { titulo: 'premio', valor: (e) => e.premio },
   { titulo: 'codigo_qr', valor: (e) => e.cliente?.codigo_qr },
   { titulo: 'cliente', valor: (e) => [e.cliente?.nombre, e.cliente?.primer_apellido].filter(Boolean).join(' ') },
   { titulo: 'staff', valor: (e) => e.staff?.usuario },
@@ -272,12 +321,12 @@ router.get('/:slug/clientes/export', requiereStaffUOperador, async (req, res) =>
   const csv = tipo === 'eventos'
     ? aCsv(COLUMNAS_EVENTOS, await todasLasFilas(() => supabase
       .from('sellos_eventos')
-      .select('creado_en, tipo, cliente:clientes!inner(codigo_qr, nombre, primer_apellido, negocio_id), staff(usuario)')
+      .select('creado_en, tipo, cantidad, monto, factura, premio, cliente:clientes!inner(codigo_qr, nombre, primer_apellido, negocio_id), staff(usuario)')
       .eq('cliente.negocio_id', negocio.id)
       .order('creado_en')))
     : aCsv(COLUMNAS_CLIENTES, await todasLasFilas(() => supabase
       .from('clientes')
-      .select('nombre, primer_apellido, segundo_apellido, telefono, correo, codigo_qr, sellos_actuales, premios_canjeados, creado_en')
+      .select('nombre, primer_apellido, segundo_apellido, telefono, correo, codigo_qr, sellos_actuales, puntos, premios_canjeados, creado_en')
       .eq('negocio_id', negocio.id)
       .order('creado_en')));
 

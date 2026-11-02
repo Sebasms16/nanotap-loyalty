@@ -180,6 +180,21 @@ test('operador: login y validaciones de alta de negocio', async () => {
   const esquina = await sharp(Buffer.from(await conFoto.arrayBuffer())).extract({ left: 2, top: 2, width: 1, height: 1 }).raw().toBuffer();
   assert.ok(esquina[1] > 180 && esquina[0] < 30, `esquina ${[...esquina]}`);
 
+  // Programa de puntos: tipo, catálogo y reglas se validan antes de tocar la BD.
+  assert.equal((await negocioCon({ tipo_programa: 'millas' })).status, 400);
+  assert.equal((await negocioCon({ colones_por_punto: 0 })).status, 400);
+  assert.equal((await negocioCon({ premios_puntos: [{ nombre: '', puntos: 10 }] })).status, 400);
+  assert.equal((await negocioCon({ premios_puntos: [{ nombre: 'Café', puntos: 0 }] })).status, 400);
+  assert.equal((await negocioCon({ premios_puntos: Array.from({ length: 13 }, (_, i) => ({ nombre: 'P' + i, puntos: i + 1 })) })).status, 400);
+  assert.equal((await negocioCon({ puntos_espera_minutos: 2000 })).status, 400);
+  const nivelesPuntos = await negocioCon({ niveles_activos: true, niveles: [{ clave: 'plata', puntos: 900 }, { clave: 'oro', puntos: 800 }] });
+  assert.equal(nivelesPuntos.status, 400);
+  assert.match((await nivelesPuntos.json()).error, /Oro debe pedir más puntos/);
+  // Sumar y canjear puntos exige sesión de staff (el token de operador no sirve).
+  const cid = '22222222-2222-4222-8222-222222222222';
+  assert.equal((await pedir(`/api/clientes/${cid}/puntos`, json({ monto: 5000 }))).status, 401);
+  assert.equal((await pedir(`/api/clientes/${cid}/canje-puntos`, json({ premio_id: 'x' }, token))).status, 401);
+
   // Un token de operador no sirve como staff.
   assert.equal((await pedir('/api/staff/yo', { headers: { Authorization: `Bearer ${token}` } })).status, 401);
 });

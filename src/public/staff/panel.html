@@ -43,6 +43,25 @@
       <p class="contador" id="contador"></p>
       <div id="sellos"></div>
       <div id="premio" class="mensaje exito" hidden></div>
+
+      <!-- Programa de puntos: monto de la compra y catálogo de premios -->
+      <div id="bloque-puntos" class="izquierda" hidden>
+        <form id="form-puntos" novalidate>
+          <div class="campo">
+            <label for="monto">Monto de la compra (₡)</label>
+            <input id="monto" type="text" inputmode="numeric" autocomplete="off" placeholder="12 500">
+          </div>
+          <div class="campo">
+            <label for="factura">Número de factura <span class="opcional" id="factura-opcional">(opcional)</span></label>
+            <input id="factura" type="text" autocapitalize="characters" autocomplete="off">
+          </div>
+          <p class="suave" id="vista-puntos" aria-live="polite"></p>
+          <button class="boton bloque grande" id="sumar-puntos" type="submit">+ Sumar puntos</button>
+        </form>
+        <h3 style="margin:1.25rem 0 0.5rem">Canjear un premio</h3>
+        <div id="catalogo" class="catalogo"></div>
+      </div>
+
       <div class="botones">
         <button class="boton bloque grande" id="sumar" type="button">+ Sumar sello</button>
         <button class="boton exito bloque grande" id="canjear" type="button" hidden>Canjear premio</button>

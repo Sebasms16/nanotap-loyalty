@@ -49,7 +49,14 @@ create table if not exists negocios (
     check (fondo_estampas_efecto in ('nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color')),
   -- Suscripción del negocio a Nanotap (la anota el operador; vence 6 o 12 meses después del inicio).
   suscripcion_plan text check (suscripcion_plan in ('semestral', 'anual')),
-  suscripcion_inicio date
+  suscripcion_inicio date,
+  -- Programa de puntos (en vez de estampas). Ver services/puntos.service.js.
+  tipo_programa text not null default 'estampas' check (tipo_programa in ('estampas', 'puntos')),
+  colones_por_punto integer not null default 1000 check (colones_por_punto between 1 and 1000000),
+  premios_puntos jsonb not null default '[]',     -- catálogo: [{id, nombre, puntos}]
+  puntos_factura_obligatoria boolean not null default false,
+  puntos_tope_compra integer check (puntos_tope_compra > 0), -- por encima, solo un administrador (null = sin tope)
+  puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440) -- entre compras del mismo cliente
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -84,6 +91,14 @@ alter table negocios add column if not exists fondo_estampas_efecto text not nul
   check (fondo_estampas_efecto in ('nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'));
 alter table negocios add column if not exists suscripcion_plan text check (suscripcion_plan in ('semestral', 'anual'));
 alter table negocios add column if not exists suscripcion_inicio date;
+alter table negocios add column if not exists tipo_programa text not null default 'estampas'
+  check (tipo_programa in ('estampas', 'puntos'));
+alter table negocios add column if not exists colones_por_punto integer not null default 1000
+  check (colones_por_punto between 1 and 1000000);
+alter table negocios add column if not exists premios_puntos jsonb not null default '[]';
+alter table negocios add column if not exists puntos_factura_obligatoria boolean not null default false;
+alter table negocios add column if not exists puntos_tope_compra integer check (puntos_tope_compra > 0);
+alter table negocios add column if not exists puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440);
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -122,8 +137,10 @@ create table if not exists clientes (
   premios_canjeados integer not null default 0 check (premios_canjeados >= 0),
   creado_en timestamptz not null default now(),
   ultima_actividad timestamptz not null default now(), -- último sello o canje (o la inscripción)
+  puntos integer not null default 0 check (puntos >= 0), -- saldo, en negocios con programa de puntos
   unique (negocio_id, telefono)
 );
+alter table clientes add column if not exists puntos integer not null default 0 check (puntos >= 0);
 
 -- =========================================================
 -- EVENTOS DE SELLOS Y CANJES (auditoría completa)
@@ -132,11 +149,21 @@ create table if not exists sellos_eventos (
   id uuid primary key default gen_random_uuid(),
   cliente_id uuid not null references clientes(id) on delete cascade,
   staff_id uuid references staff(id) on delete set null,
-  tipo text not null check (tipo in ('sello', 'canje', 'reinicio')), -- reinicio: volvió a cero por inactividad
-  creado_en timestamptz not null default now()
+  -- reinicio: volvió a cero por inactividad; puntos / canje_puntos: programa de puntos
+  tipo text not null check (tipo in ('sello', 'canje', 'reinicio', 'puntos', 'canje_puntos')),
+  creado_en timestamptz not null default now(),
+  cantidad integer,  -- puntos sumados (+) o gastados (-)
+  monto integer,     -- monto de la compra en colones
+  factura text,      -- número de factura (normalizado)
+  premio text        -- premio canjeado con puntos
 );
 alter table sellos_eventos drop constraint if exists sellos_eventos_tipo_check;
-alter table sellos_eventos add constraint sellos_eventos_tipo_check check (tipo in ('sello', 'canje', 'reinicio'));
+alter table sellos_eventos add constraint sellos_eventos_tipo_check
+  check (tipo in ('sello', 'canje', 'reinicio', 'puntos', 'canje_puntos'));
+alter table sellos_eventos add column if not exists cantidad integer;
+alter table sellos_eventos add column if not exists monto integer;
+alter table sellos_eventos add column if not exists factura text;
+alter table sellos_eventos add column if not exists premio text;
 
 -- clientes.ultima_actividad en bases creadas antes: se toma del historial, o de
 -- la inscripción si nunca volvió.
@@ -190,6 +217,18 @@ create table if not exists wallet_sync_pendientes (
   unique (cliente_id, plataforma)
 );
 
+-- =========================================================
+-- FACTURAS YA USADAS PARA SUMAR PUNTOS
+-- Una factura suma puntos una sola vez por negocio, aunque se borre el cliente.
+-- =========================================================
+create table if not exists facturas_puntos (
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  factura text not null,
+  cliente_id uuid references clientes(id) on delete set null,
+  creado_en timestamptz not null default now(),
+  primary key (negocio_id, factura)
+);
+
 create index if not exists idx_clientes_negocio on clientes(negocio_id);
 create index if not exists idx_sellos_eventos_cliente on sellos_eventos(cliente_id);
 create index if not exists idx_apple_devices_serial on apple_device_registrations(serial_number);
@@ -209,7 +248,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.sello_url, n.color_fondo_sellos, n.reglas, n.estampas_urls, n.estampas_pendientes,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
-       n.estampa_final_url
+       n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
+       n.puntos_tope_compra, n.puntos_espera_minutos
 from negocios n;
 
 -- =========================================================
@@ -225,12 +265,13 @@ as $$
 declare
   v_negocio_id uuid;
   v_activo boolean;
+  v_tipo text;
   v_meta integer;
   v_sellos integer;
   v_premios integer;
 begin
-  select c.negocio_id, n.activo, n.sellos_para_premio
-    into v_negocio_id, v_activo, v_meta
+  select c.negocio_id, n.activo, n.sellos_para_premio, n.tipo_programa
+    into v_negocio_id, v_activo, v_meta, v_tipo
     from clientes c join negocios n on n.id = c.negocio_id
    where c.id = p_cliente_id
      for update of c;
@@ -238,6 +279,7 @@ begin
   if not found then raise exception 'cliente_no_encontrado'; end if;
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   if not v_activo then raise exception 'negocio_inactivo'; end if;
+  if v_tipo = 'puntos' then raise exception 'programa_de_puntos'; end if;
 
   update clientes
      set sellos_actuales = sellos_actuales + 1, ultima_actividad = now()
@@ -271,9 +313,10 @@ declare
   v_meta integer;
   v_sellos integer;
   v_premios integer;
+  v_tipo text;
 begin
-  select c.negocio_id, n.activo, n.sellos_para_premio, c.sellos_actuales
-    into v_negocio_id, v_activo, v_meta, v_sellos
+  select c.negocio_id, n.activo, n.sellos_para_premio, c.sellos_actuales, n.tipo_programa
+    into v_negocio_id, v_activo, v_meta, v_sellos, v_tipo
     from clientes c join negocios n on n.id = c.negocio_id
    where c.id = p_cliente_id
      for update of c;
@@ -281,6 +324,7 @@ begin
   if not found then raise exception 'cliente_no_encontrado'; end if;
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   if not v_activo then raise exception 'negocio_inactivo'; end if;
+  if v_tipo = 'puntos' then raise exception 'programa_de_puntos'; end if;
   if v_sellos < v_meta then raise exception 'sellos_insuficientes'; end if;
 
   update clientes
@@ -300,6 +344,124 @@ begin
     'premio_disponible', v_sellos >= v_meta
   );
 end;
+$$;
+
+-- =========================================================
+-- SUMAR PUNTOS (programa de puntos)
+-- Los puntos los calcula la base de datos a partir del monto: el navegador
+-- nunca dice cuántos. Todas las reglas del negocio se revisan aquí, dentro de la
+-- misma transacción que suma: factura obligatoria y sin repetir, tope por
+-- compra (p_sin_tope = el staff es administrador) y espera entre compras.
+-- =========================================================
+create or replace function sumar_puntos(
+  p_cliente_id uuid, p_negocio_id uuid, p_staff_id uuid,
+  p_monto integer, p_factura text default null, p_sin_tope boolean default false
+)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_negocio_id uuid;
+  v_n negocios%rowtype;
+  v_puntos integer;
+  v_saldo integer;
+  -- Misma factura escrita con espacios o minúsculas = la misma factura.
+  v_factura text := nullif(upper(regexp_replace(coalesce(p_factura, ''), '\s', '', 'g')), '');
+begin
+  select c.negocio_id into v_negocio_id from clientes c where c.id = p_cliente_id for update;
+  if not found then raise exception 'cliente_no_encontrado'; end if;
+  if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
+  select * into v_n from negocios where id = p_negocio_id;
+  if not v_n.activo then raise exception 'negocio_inactivo'; end if;
+  if v_n.tipo_programa <> 'puntos' then raise exception 'programa_de_estampas'; end if;
+  if p_monto is null or p_monto <= 0 or p_monto > 100000000 then raise exception 'monto_invalido'; end if;
+  if v_n.puntos_factura_obligatoria and v_factura is null then raise exception 'factura_requerida'; end if;
+  if v_n.puntos_tope_compra is not null and p_monto > v_n.puntos_tope_compra and not coalesce(p_sin_tope, false) then
+    raise exception 'monto_sobre_tope';
+  end if;
+  if v_n.puntos_espera_minutos is not null and exists (
+       select 1 from sellos_eventos
+        where cliente_id = p_cliente_id and tipo = 'puntos'
+          and creado_en > now() - make_interval(mins => v_n.puntos_espera_minutos)) then
+    raise exception 'compra_muy_seguida';
+  end if;
+
+  v_puntos := p_monto / v_n.colones_por_punto; -- división entera: se redondea hacia abajo
+  if v_puntos < 1 then raise exception 'monto_insuficiente'; end if;
+
+  if v_factura is not null then
+    begin
+      insert into facturas_puntos (negocio_id, factura, cliente_id) values (p_negocio_id, v_factura, p_cliente_id);
+    exception when unique_violation then
+      raise exception 'factura_repetida';
+    end;
+  end if;
+
+  update clientes set puntos = puntos + v_puntos, ultima_actividad = now()
+   where id = p_cliente_id returning puntos into v_saldo;
+  insert into sellos_eventos (cliente_id, staff_id, tipo, cantidad, monto, factura)
+  values (p_cliente_id, p_staff_id, 'puntos', v_puntos, p_monto, v_factura);
+  update wallet_passes set ultima_actualizacion = now() where cliente_id = p_cliente_id;
+
+  return json_build_object('puntos_actuales', v_saldo, 'puntos_sumados', v_puntos, 'monto', p_monto);
+end;
+$$;
+
+-- =========================================================
+-- CANJEAR PUNTOS por un premio del catálogo del negocio (premios_puntos)
+-- =========================================================
+create or replace function canjear_puntos(p_cliente_id uuid, p_negocio_id uuid, p_staff_id uuid, p_premio_id text)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_negocio_id uuid;
+  v_n negocios%rowtype;
+  v_premio jsonb;
+  v_costo integer;
+  v_saldo integer;
+  v_premios integer;
+begin
+  select c.negocio_id, c.puntos into v_negocio_id, v_saldo from clientes c where c.id = p_cliente_id for update;
+  if not found then raise exception 'cliente_no_encontrado'; end if;
+  if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
+  select * into v_n from negocios where id = p_negocio_id;
+  if not v_n.activo then raise exception 'negocio_inactivo'; end if;
+  if v_n.tipo_programa <> 'puntos' then raise exception 'programa_de_estampas'; end if;
+
+  select e.valor into v_premio
+    from jsonb_array_elements(v_n.premios_puntos) as e(valor)
+   where e.valor->>'id' = p_premio_id
+   limit 1;
+  if v_premio is null then raise exception 'premio_no_encontrado'; end if;
+  v_costo := (v_premio->>'puntos')::integer;
+  if v_saldo < v_costo then raise exception 'puntos_insuficientes'; end if;
+
+  update clientes
+     set puntos = puntos - v_costo, premios_canjeados = premios_canjeados + 1, ultima_actividad = now()
+   where id = p_cliente_id
+   returning puntos, premios_canjeados into v_saldo, v_premios;
+  insert into sellos_eventos (cliente_id, staff_id, tipo, cantidad, premio)
+  values (p_cliente_id, p_staff_id, 'canje_puntos', -v_costo, v_premio->>'nombre');
+  update wallet_passes set ultima_actualizacion = now() where cliente_id = p_cliente_id;
+
+  return json_build_object('puntos_actuales', v_saldo, 'premios_canjeados', v_premios,
+                           'premio', v_premio->>'nombre', 'puntos_usados', v_costo);
+end;
+$$;
+
+-- Puntos ganados por un cliente en un rango (para los niveles por temporada).
+create or replace function puntos_ganados(p_cliente_id uuid, p_desde timestamptz, p_hasta timestamptz)
+returns integer
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(sum(cantidad), 0)::integer
+    from sellos_eventos
+   where cliente_id = p_cliente_id and tipo = 'puntos' and creado_en >= p_desde and creado_en < p_hasta;
 $$;
 
 -- =========================================================
@@ -351,12 +513,12 @@ declare
 begin
   with reiniciados as (
     update clientes c
-       set sellos_actuales = 0
+       set sellos_actuales = 0, puntos = 0
       from negocios n
      where n.id = c.negocio_id
        and n.activo
        and n.inactividad_meses is not null
-       and c.sellos_actuales > 0
+       and (c.sellos_actuales > 0 or c.puntos > 0)
        and c.ultima_actividad < now() - make_interval(months => n.inactividad_meses)
     returning c.id
   ),
@@ -399,7 +561,11 @@ as $$
 with
   cli as (select * from clientes where negocio_id = p_negocio_id),
   meta as (select sellos_para_premio as n from negocios where id = p_negocio_id),
-  ev as (select e.* from sellos_eventos e join cli c on c.id = e.cliente_id where e.tipo in ('sello', 'canje')),
+  -- Con puntos, cada compra cuenta como visita ('sello') y cada canje como canje.
+  ev as (select e.id, e.cliente_id, e.staff_id, e.creado_en,
+                case e.tipo when 'puntos' then 'sello' when 'canje_puntos' then 'canje' else e.tipo end as tipo
+           from sellos_eventos e join cli c on c.id = e.cliente_id
+          where e.tipo <> 'reinicio'),
   ev_p as (select * from ev where creado_en >= p_desde and creado_en < p_hasta),
   ev_a as (select * from ev where creado_en >= p_desde - (p_hasta - p_desde) and creado_en < p_desde),
   activos as (
@@ -496,13 +662,19 @@ select json_build_object(
      where c.fecha_nacimiento is not null
        and extract(month from c.fecha_nacimiento) = extract(month from hoy.t)
   ),
+  -- Avance de nivel en la temporada: tarjetas canjeadas o, con puntos, puntos ganados
+  -- (se devuelve como 'canjes' para no cambiar el formato).
   'niveles', case when p_temporada_desde is null then null else (
     select coalesce(json_agg(json_build_object('canjes', k, 'clientes', n) order by k), '[]'::json)
-      from (select coalesce(t.canjes, 0) k, count(*) n
+      from (select coalesce(t.valor, 0) k, count(*) n
               from cli
-              left join (select cliente_id, count(*) canjes from ev
-                          where tipo = 'canje' and creado_en >= p_temporada_desde and creado_en < p_temporada_hasta
-                          group by cliente_id) t on t.cliente_id = cli.id
+              left join (select e.cliente_id,
+                                case when (select tipo_programa from negocios where id = p_negocio_id) = 'puntos'
+                                     then coalesce(sum(e.cantidad) filter (where e.tipo = 'puntos'), 0)
+                                     else count(*) filter (where e.tipo = 'canje') end as valor
+                           from sellos_eventos e join cli c2 on c2.id = e.cliente_id
+                          where e.creado_en >= p_temporada_desde and e.creado_en < p_temporada_hasta
+                          group by e.cliente_id) t on t.cliente_id = cli.id
              group by 1) x
   ) end
 );
@@ -515,8 +687,10 @@ stable
 set search_path = public
 as $$
 with
-  ev as (select e.*, c.negocio_id from sellos_eventos e join clientes c on c.id = e.cliente_id
-          where e.tipo in ('sello', 'canje')),
+  ev as (select e.id, e.cliente_id, e.staff_id, e.creado_en, c.negocio_id,
+                case e.tipo when 'puntos' then 'sello' when 'canje_puntos' then 'canje' else e.tipo end as tipo
+           from sellos_eventos e join clientes c on c.id = e.cliente_id
+          where e.tipo <> 'reinicio'),
   ev_p as (select * from ev where creado_en >= p_desde and creado_en < p_hasta),
   ev_a as (select * from ev where creado_en >= p_desde - (p_hasta - p_desde) and creado_en < p_desde)
 select json_build_object(
@@ -583,12 +757,16 @@ alter table sellos_eventos enable row level security;
 alter table wallet_passes enable row level security;
 alter table apple_device_registrations enable row level security;
 alter table wallet_sync_pendientes enable row level security;
+alter table facturas_puntos enable row level security;
 
 -- Las funciones no deben poder llamarse vía /rpc con la anon key.
 revoke execute on function sumar_sello(uuid, uuid, uuid) from public;
 revoke execute on function canjear_premio(uuid, uuid, uuid) from public;
 revoke execute on function encolar_sync_negocio(uuid) from public;
 revoke execute on function reiniciar_inactivos() from public;
+revoke execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) from public;
+revoke execute on function canjear_puntos(uuid, uuid, uuid, text) from public;
+revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from public;
 revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from public;
 revoke execute on function analisis_operador(timestamptz, timestamptz, text) from public;
 
@@ -599,6 +777,9 @@ begin
     revoke execute on function canjear_premio(uuid, uuid, uuid) from anon, authenticated;
     revoke execute on function encolar_sync_negocio(uuid) from anon, authenticated;
     revoke execute on function reiniciar_inactivos() from anon, authenticated;
+    revoke execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) from anon, authenticated;
+    revoke execute on function canjear_puntos(uuid, uuid, uuid, text) from anon, authenticated;
+    revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_operador(timestamptz, timestamptz, text) from anon, authenticated;
   end if;
@@ -607,6 +788,9 @@ begin
     grant execute on function canjear_premio(uuid, uuid, uuid) to service_role;
     grant execute on function encolar_sync_negocio(uuid) to service_role;
     grant execute on function reiniciar_inactivos() to service_role;
+    grant execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) to service_role;
+    grant execute on function canjear_puntos(uuid, uuid, uuid, text) to service_role;
+    grant execute on function puntos_ganados(uuid, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_operador(timestamptz, timestamptz, text) to service_role;
   end if;

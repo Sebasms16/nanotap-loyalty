@@ -15,6 +15,7 @@ const estampas = require('./estampas.service');
 const marca = require('./marca.service');
 const niveles = require('./niveles.service');
 const inactividad = require('./inactividad.service');
+const puntos = require('./puntos.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -37,9 +38,12 @@ async function generarPass({ cliente, negocio, pass }) {
   const estado = await niveles.estadoDelCliente(cliente, negocio);
   const premio = niveles.premioActual(negocio, estado);
   const vigencia = inactividad.aviso(cliente, negocio);
+  const conPuntos = puntos.esPuntos(negocio);
+  const saldo = cliente.puntos || 0;
 
+  // Con puntos, la franja es una barra de avance con el saldo; con estampas, las estampas.
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
-    marca.tiraDelNegocio(negocio, sellos, { ancho: 375 * escala, alto: 123 * escala })));
+    marca.tiraDelNegocio(negocio, conPuntos ? saldo : sellos, { ancho: 375 * escala, alto: 123 * escala })));
   const archivos = {
     'strip.png': tiras[0],
     'strip@2x.png': tiras[1],
@@ -69,7 +73,7 @@ async function generarPass({ cliente, negocio, pass }) {
       authenticationToken: pass.auth_token,
       webServiceURL: `${env.baseUrl}/api/wallet/apple`,
       organizationName: negocio.nombre,
-      description: `Tarjeta de estampas ${negocio.nombre}`,
+      description: `Tarjeta de ${conPuntos ? 'puntos' : 'estampas'} ${negocio.nombre}`,
       // Sin logoText si el logo ya trae el nombre (lo indica el negocio, o el logo es
       // alargado): así el logo usa todo el ancho en vez de compartirlo con el nombre.
       ...(negocio.ocultar_nombre || await marca.logoEsAncho(negocio) ? {} : { logoText: negocio.nombre }),
@@ -83,33 +87,57 @@ async function generarPass({ cliente, negocio, pass }) {
   pkpass.type = 'storeCard';
   // Arriba a la derecha: el nivel si el negocio usa niveles; si no, el contador.
   // changeMessage solo al subir: volver a Bronce al cambiar de temporada no avisa.
-  pkpass.headerFields.push(estado
-    ? {
-      key: 'nivel',
-      label: 'NIVEL',
-      value: niveles.etiqueta(estado.nivel),
-      textAlignment: 'PKTextAlignmentRight',
-      ...(estado.nivel.clave === 'bronce' ? {} : { changeMessage: '¡Subió a nivel %@!' }),
-    }
-    : { key: 'estampas', label: 'ESTAMPAS', value: `${sellos}/${meta}` });
-  pkpass.secondaryFields.push(
-    { key: 'premio', label: 'PREMIO', value: premio },
-    {
-      key: 'faltan',
-      label: 'FALTAN',
-      value: faltan === 0 ? '¡Listo!' : faltan,
-      textAlignment: 'PKTextAlignmentRight',
-      // changeMessage hace que el iPhone muestre una notificación al cambiar el valor.
-      changeMessage: faltan === 0 ? '¡Su premio está listo para canjear!' : 'Le faltan %@ estampas para su premio',
-    }
-  );
+  const campoNivel = estado && {
+    key: 'nivel',
+    label: 'NIVEL',
+    value: niveles.etiqueta(estado.nivel),
+    textAlignment: 'PKTextAlignmentRight',
+    ...(estado.nivel.clave === 'bronce' ? {} : { changeMessage: '¡Subió a nivel %@!' }),
+  };
+  const campoSaldo = { key: 'puntos', label: 'PUNTOS', value: saldo, numberStyle: 'PKNumberStyleDecimal' };
+  if (conPuntos) {
+    // Saldo arriba (o abajo, si arriba va el nivel), el próximo premio y cuánto falta.
+    const sig = puntos.proximo(negocio, saldo);
+    pkpass.headerFields.push(campoNivel || { ...campoSaldo, textAlignment: 'PKTextAlignmentRight' });
+    pkpass.secondaryFields.push(
+      ...(campoNivel ? [campoSaldo] : []),
+      { key: 'premio', label: sig?.faltan === 0 ? 'PUEDE CANJEAR' : 'PRÓXIMO PREMIO', value: sig ? sig.premio.nombre : '—' },
+      {
+        key: 'faltan',
+        label: 'FALTAN',
+        value: !sig ? '—' : sig.faltan === 0 ? '¡Listo!' : sig.faltan,
+        textAlignment: 'PKTextAlignmentRight',
+        changeMessage: sig?.faltan === 0 ? '¡Ya le alcanza para un premio!' : 'Le faltan %@ puntos para su próximo premio',
+      }
+    );
+  } else {
+    pkpass.headerFields.push(campoNivel || { key: 'estampas', label: 'ESTAMPAS', value: `${sellos}/${meta}` });
+    pkpass.secondaryFields.push(
+      { key: 'premio', label: 'PREMIO', value: premio },
+      {
+        key: 'faltan',
+        label: 'FALTAN',
+        value: faltan === 0 ? '¡Listo!' : faltan,
+        textAlignment: 'PKTextAlignmentRight',
+        // changeMessage hace que el iPhone muestre una notificación al cambiar el valor.
+        changeMessage: faltan === 0 ? '¡Su premio está listo para canjear!' : 'Le faltan %@ estampas para su premio',
+      }
+    );
+  }
+  const catalogo = conPuntos && puntos.catalogo(negocio);
   pkpass.backFields.push(
     { key: 'cliente', label: 'Cliente', value: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' ') },
+    ...(catalogo?.length ? [{
+      key: 'catalogo',
+      label: 'Premios',
+      value: catalogo.map((p) => `• ${p.nombre}: ${puntos.formatoPuntos(p.puntos)} puntos`).join('\n'),
+    }] : []),
     ...(estado ? [{ key: 'nivel_detalle', label: 'Nivel y temporada', value: niveles.resumen(estado) }] : []),
-    ...(vigencia ? [{ key: 'vigencia', label: 'Vigencia de las estampas', value: vigencia }] : []),
+    ...(conPuntos && estado?.premio ? [{ key: 'beneficio', label: 'Beneficio de su nivel', value: estado.premio }] : []),
+    ...(vigencia ? [{ key: 'vigencia', label: `Vigencia de ${conPuntos ? 'los puntos' : 'las estampas'}`, value: vigencia }] : []),
     { key: 'canjeados', label: 'Premios canjeados', value: cliente.premios_canjeados },
     { key: 'reglas', label: 'Reglas del programa', value: reglasComoTexto(negocio) },
-    { key: 'consulta', label: 'Consultar mis estampas', value: `${env.baseUrl}/${negocio.slug}/consulta` },
+    { key: 'consulta', label: `Consultar mis ${conPuntos ? 'puntos' : 'estampas'}`, value: `${env.baseUrl}/${negocio.slug}/consulta` },
     { key: 'privacidad', label: 'Privacidad', value: `${env.baseUrl}/${negocio.slug}/privacidad` },
     { key: 'codigo', label: 'Código', value: cliente.codigo_qr }
   );

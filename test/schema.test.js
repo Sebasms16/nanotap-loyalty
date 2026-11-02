@@ -202,3 +202,49 @@ test('el plazo de inactividad guardado en días se pasa a meses al volver a corr
   );
   assert.equal(columna.rows.length, 0);
 });
+
+test('programa de puntos: monto → puntos, factura única, tope, espera, canje del catálogo y aislamiento', async () => {
+  const negocio = (await db.query(
+    `insert into negocios (nombre, slug, tipo_programa, colones_por_punto, puntos_tope_compra, premios_puntos)
+     values ('Tienda P', 'tienda-p', 'puntos', 1000, 50000,
+             '[{"id":"cafe","nombre":"Café","puntos":5},{"id":"postre","nombre":"Postre","puntos":40}]') returning id`
+  )).rows[0].id;
+  const cli = (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr) values ($1, 'Pía', '22220001', 'p@example.com', 'TIE-2026-PPPP') returning id`,
+    [negocio]
+  )).rows[0].id;
+  const sumar = async (monto, factura = null, sinTope = false) =>
+    (await db.query('select sumar_puntos($1, $2, null, $3, $4, $5) as r', [cli, negocio, monto, factura, sinTope])).rows[0].r;
+  const canjear = async (premio) => (await db.query('select canjear_puntos($1, $2, null, $3) as r', [cli, negocio, premio])).rows[0].r;
+
+  const r = await sumar(12500, ' fe-001 ');
+  assert.deepEqual([r.puntos_sumados, r.puntos_actuales], [12, 12]); // ₡12 500 → 12 puntos (hacia abajo)
+  await assert.rejects(sumar(3000, 'FE-001'), /factura_repetida/);   // misma factura, aunque cambie el formato
+  await assert.rejects(sumar(500), /monto_insuficiente/);
+  await assert.rejects(sumar(0), /monto_invalido/);
+  await assert.rejects(sumar(60000), /monto_sobre_tope/);            // sobre el tope: solo un administrador
+  assert.equal((await sumar(60000, null, true)).puntos_actuales, 72);
+
+  await db.query('update negocios set puntos_espera_minutos = 10, puntos_factura_obligatoria = true where id = $1', [negocio]);
+  await assert.rejects(sumar(2000, 'FE-777'), /compra_muy_seguida/);
+  await db.query(`update sellos_eventos set creado_en = now() - interval '1 hour' where cliente_id = $1`, [cli]);
+  await assert.rejects(sumar(2000), /factura_requerida/);
+  assert.equal((await sumar(2000, 'FE-777')).puntos_actuales, 74);
+
+  const canje = await canjear('postre');
+  assert.deepEqual([canje.puntos_actuales, canje.premio, canje.puntos_usados], [34, 'Postre', 40]);
+  await assert.rejects(canjear('no-existe'), /premio_no_encontrado/);
+  await assert.rejects(canjear('postre'), /puntos_insuficientes/);
+
+  // Un negocio de puntos no acepta estampas, y uno de estampas no acepta puntos.
+  await assert.rejects(db.query('select sumar_sello($1, $2, null)', [cli, negocio]), /programa_de_puntos/);
+  await assert.rejects(db.query('select sumar_puntos($1, $2, null, 5000)', [cliente, negocioA]), /programa_de_estampas/);
+  // Otro negocio no puede tocar a este cliente.
+  await assert.rejects(db.query('select sumar_puntos($1, $2, null, 5000)', [cli, negocioB]), /cliente_de_otro_negocio/);
+
+  const ganados = (await db.query(`select puntos_ganados($1, now() - interval '1 day', now() + interval '1 minute') as n`, [cli])).rows[0].n;
+  assert.equal(ganados, 74); // los canjes no restan a lo ganado en la temporada
+  const historial = await db.query(`select tipo, cantidad, monto, factura, premio from sellos_eventos where cliente_id = $1 order by creado_en, tipo`, [cli]);
+  assert.deepEqual(historial.rows.map((e) => e.tipo).sort(), ['canje_puntos', 'puntos', 'puntos', 'puntos']);
+  assert.ok(historial.rows.some((e) => e.factura === 'FE-001' && e.monto === 12500 && e.cantidad === 12));
+});

@@ -157,6 +157,15 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   premio sin canjear. Lo hace la función SQL `reiniciar_inactivos()`, que el worker corre cada hora: anota un evento
   `reinicio` en el historial y encola las tarjetas. El reverso (Apple), el detalle (Google) y la consulta de saldo
   muestran la fecha límite, y las reglas sugeridas lo explican (`services/inactividad.service.js`).
+- **Programa de puntos (opcional, por negocio):** en vez de estampas (`tipo_programa = 'puntos'`), el staff
+  digita el monto de la compra y la función SQL `sumar_puntos` calcula los puntos (1 por cada `colones_por_punto`,
+  hacia abajo) y revisa en la misma transacción las reglas del negocio: número de factura obligatorio
+  (`puntos_factura_obligatoria`; si se escribe, nunca se repite: tabla `facturas_puntos`), tope por compra
+  (`puntos_tope_compra`; por encima solo un staff administrador) y espera entre compras del mismo cliente
+  (`puntos_espera_minutos`). Los puntos se canjean por premios del catálogo (`premios_puntos`) con
+  `canjear_puntos`. La tarjeta muestra el saldo, el próximo premio y cuánto falta; la franja es una barra de avance.
+  Con niveles, se sube por puntos ganados en la temporada; el reinicio por inactividad también pone los puntos en cero
+  (`services/puntos.service.js`). La migración para una base existente está en `src/db/migraciones/`.
 - **Suscripciones:** el operador anota para cada negocio el plan (`semestral` o `anual`) y el inicio del período
   pagado; el panel calcula el vencimiento (6 o 12 meses después) y la cuenta regresiva, en rojo con menos de un mes
   (o vencida), amarillo con menos de dos y verde con más. «Renovar» empieza el período siguiente el día del vencimiento.
@@ -199,6 +208,7 @@ src/
     apnsPush.service.js        push HTTP/2 a APNs
     walletSync.service.js      propagación a wallets + cola de reintentos; temporadas y reinicio por inactividad
     inactividad.service.js     aviso de la fecha límite y reinicio de tarjetas inactivas
+    puntos.service.js          programa de puntos: catálogo, próximo premio, reglas
     imagen.service.js          PNG de sellos e íconos (sin dependencias)
     qrcode.service.js
   public/                      páginas (inscripción, consulta, privacidad, staff, operador)
@@ -222,6 +232,8 @@ Las rutas de la sección 8 de la especificación, más:
 | `GET`/`POST` | `/api/negocios/:id/staff` | Operador | Listar / crear usuarios de staff |
 | `PATCH` | `/api/staff/:id` | Operador | Activar/desactivar, nombre, nueva contraseña |
 | `GET` | `/api/staff/yo` | Staff | Datos de la sesión |
+| `POST` | `/api/clientes/:id/puntos` | Staff | Programa de puntos: `{ monto, factura }`; los puntos los calcula el servidor |
+| `POST` | `/api/clientes/:id/canje-puntos` | Staff | Canjear un premio del catálogo: `{ premio_id }` |
 | `DELETE` | `/api/clientes/:id` | Operador | Eliminación completa de datos (Ley 8968) |
 | `GET` | `/api/negocios/:slug/clientes/export?tipo=eventos` | Staff/Operador | CSV del historial de sellos y canjes |
 

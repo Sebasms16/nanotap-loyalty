@@ -15,13 +15,25 @@
       mensaje($('#error'), '');
       $('#resultado').hidden = false;
       $('#saludo').textContent = `Hola, ${r.nombre}`;
-      $('#contador').replaceChildren(String(r.sellos_actuales), ' ', Object.assign(document.createElement('small'), { textContent: `de ${r.sellos_para_premio} sellos` }));
-      $('#sellos').replaceChildren(circulosSellos(Math.min(r.sellos_actuales, r.sellos_para_premio), r.sellos_para_premio));
-      const faltan = r.sellos_para_premio - r.sellos_actuales;
-      mensaje($('#estado'), r.premio_disponible
-        ? `¡Tiene un premio disponible! Pídalo en caja: ${r.descripcion_premio}.`
-        : `Le falta${faltan === 1 ? '' : 'n'} ${faltan} sello${faltan === 1 ? '' : 's'} para: ${r.descripcion_premio}.`,
-        r.premio_disponible ? 'exito' : 'aviso');
+      const pequeno = (texto) => Object.assign(document.createElement('small'), { textContent: texto });
+      if (r.puntos) {
+        // Programa de puntos: saldo y el próximo premio del catálogo.
+        const sig = r.puntos.proximo;
+        $('#contador').replaceChildren(r.puntos.puntos.toLocaleString('es-CR'), ' ', pequeno('puntos'));
+        $('#sellos').replaceChildren();
+        mensaje($('#estado'), !sig ? ''
+          : sig.faltan === 0 ? `¡Ya le alcanza para un premio! Pídalo en caja: ${sig.nombre}.`
+          : `Le faltan ${sig.faltan.toLocaleString('es-CR')} puntos para: ${sig.nombre}.`,
+          sig?.faltan === 0 ? 'exito' : 'aviso');
+      } else {
+        $('#contador').replaceChildren(String(r.sellos_actuales), ' ', pequeno(`de ${r.sellos_para_premio} sellos`));
+        $('#sellos').replaceChildren(circulosSellos(Math.min(r.sellos_actuales, r.sellos_para_premio), r.sellos_para_premio));
+        const faltan = r.sellos_para_premio - r.sellos_actuales;
+        mensaje($('#estado'), r.premio_disponible
+          ? `¡Tiene un premio disponible! Pídalo en caja: ${r.descripcion_premio}.`
+          : `Le falta${faltan === 1 ? '' : 'n'} ${faltan} sello${faltan === 1 ? '' : 's'} para: ${r.descripcion_premio}.`,
+          r.premio_disponible ? 'exito' : 'aviso');
+      }
       $('#canjeados').textContent = r.premios_canjeados ? `Premios canjeados: ${r.premios_canjeados}` : '';
       // Nivel de la temporada (si el negocio usa niveles).
       $('#nivel').hidden = !r.nivel;
