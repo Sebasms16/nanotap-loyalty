@@ -248,3 +248,45 @@ test('programa de puntos: monto → puntos, factura única, tope, espera, canje 
   assert.deepEqual(historial.rows.map((e) => e.tipo).sort(), ['canje_puntos', 'puntos', 'puntos', 'puntos']);
   assert.ok(historial.rows.some((e) => e.factura === 'FE-001' && e.monto === 12500 && e.cantidad === 12));
 });
+
+test('programa de cashback: % de la compra como saldo, mínimo para usarlo, uso parcial y aislamiento', async () => {
+  const negocio = (await db.query(
+    `insert into negocios (nombre, slug, tipo_programa, cashback_porcentaje, cashback_minimo)
+     values ('Tienda C', 'tienda-c', 'cashback', 2.5, 1000) returning id`
+  )).rows[0].id;
+  const cli = (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr) values ($1, 'Caro', '22220002', 'c@example.com', 'TIE-2026-CCCC') returning id`,
+    [negocio]
+  )).rows[0].id;
+  const sumar = async (monto, factura = null) =>
+    (await db.query('select sumar_puntos($1, $2, null, $3, $4) as r', [cli, negocio, monto, factura])).rows[0].r;
+  const usar = async (monto, clienteId = cli, negocioId = negocio) =>
+    (await db.query('select usar_cashback($1, $2, null, $3) as r', [clienteId, negocioId, monto])).rows[0].r;
+
+  const r = await sumar(12999, 'F-1');
+  assert.deepEqual([r.puntos_sumados, r.puntos_actuales], [324, 324]); // 2,5 % de ₡12 999 = ₡324,97 → ₡324
+  await assert.rejects(sumar(30), /monto_sin_cashback/);                 // ₡0,75 no alcanza para ₡1
+  await assert.rejects(sumar(5000, 'f-1'), /factura_repetida/);          // las reglas de compra son las mismas de los puntos
+  await assert.rejects(usar(100), /saldo_bajo_minimo/);                  // ₡324 todavía no llega al mínimo de ₡1 000
+
+  await sumar(40000); // + ₡1 000
+  const uso = await usar(500);
+  assert.deepEqual([uso.usado, uso.puntos_actuales, uso.premios_canjeados], [500, 824, 1]);
+  await assert.rejects(usar(100), /saldo_bajo_minimo/);                  // bajó del mínimo: tiene que volver a llegar
+  await db.query('update negocios set cashback_minimo = null where id = $1', [negocio]);
+  await assert.rejects(usar(900), /saldo_insuficiente/);                 // nunca más de lo que tiene
+  await assert.rejects(usar(0), /monto_invalido/);
+  assert.equal((await usar(824)).puntos_actuales, 0);
+
+  // Cashback no acepta estampas ni catálogo; puntos y estampas no aceptan usar saldo; otro negocio no toca al cliente.
+  await assert.rejects(db.query('select sumar_sello($1, $2, null)', [cli, negocio]), /programa_de_puntos/);
+  await assert.rejects(db.query(`select canjear_puntos($1, $2, null, 'x')`, [cli, negocio]), /programa_sin_catalogo/);
+  await assert.rejects(usar(10, cliente, negocioA), /programa_sin_cashback/);
+  await assert.rejects(usar(10, cli, negocioB), /cliente_de_otro_negocio/);
+
+  const comprado = (await db.query(`select compras_en_rango($1, now() - interval '1 day', now() + interval '1 minute') as n`, [cli])).rows[0].n;
+  assert.equal(Number(comprado), 52999); // para los niveles: lo comprado, sin restar lo usado
+  const usos = await db.query(`select cantidad, monto, premio from sellos_eventos where cliente_id = $1 and tipo = 'canje_puntos' order by creado_en`, [cli]);
+  assert.deepEqual(usos.rows.map((e) => [e.cantidad, e.monto]), [[-500, 500], [-824, 824]]);
+  await assert.rejects(db.query(`update negocios set cashback_porcentaje = 60 where id = $1`, [negocio]), /check/);
+});

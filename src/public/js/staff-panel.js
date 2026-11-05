@@ -90,15 +90,17 @@
     const nivel = cliente.nivel;
     $('#nivel').hidden = !nivel;
     if (!nivel) return;
-    const unidad = nivel.unidad === 'puntos'
-      ? (nivel.faltan === 1 ? 'punto' : 'puntos') : (nivel.faltan === 1 ? 'tarjeta' : 'tarjetas');
+    // Con cashback, la meta es lo comprado en la temporada: "Faltan ₡68 000 en compras".
+    const cuanto = nivel.unidad === 'compras' ? `₡${numero(nivel.faltan)} en compras`
+      : `${numero(nivel.faltan)} ${nivel.unidad === 'puntos'
+        ? (nivel.faltan === 1 ? 'punto' : 'puntos') : (nivel.faltan === 1 ? 'tarjeta' : 'tarjetas')}`;
     $('#nivel').replaceChildren(
       el('strong', {}, `${nivel.nivel.emoji} Nivel ${nivel.nivel.nombre}`),
       el('br'),
       el('small', {}, nivel.siguiente
-        ? `${nivel.faltan === 1 ? 'Falta' : 'Faltan'} ${numero(nivel.faltan)} ${unidad} para ${nivel.siguiente.emoji} ${nivel.siguiente.nombre} · temporada hasta el ${nivel.fin}`
+        ? `${nivel.faltan === 1 ? 'Falta' : 'Faltan'} ${cuanto} para ${nivel.siguiente.emoji} ${nivel.siguiente.nombre} · temporada hasta el ${nivel.fin}`
         : `Nivel máximo · temporada hasta el ${nivel.fin}`),
-      ...(nivel.unidad === 'puntos' && nivel.premio ? [el('br'), el('small', {}, `Beneficio: ${nivel.premio}`)] : []));
+      ...(nivel.unidad !== 'tarjetas' && nivel.premio ? [el('br'), el('small', {}, `Beneficio: ${nivel.premio}`)] : []));
   }
 
   const numero = (n) => Number(n).toLocaleString('es-CR');
@@ -108,8 +110,10 @@
   // --- Programa de puntos ------------------------------------------------------
   function pintarPuntos() {
     const p = cliente.puntos;
-    for (const id of ['#sellos', '#sumar', '#canjear', '#premio']) $(id).hidden = true;
+    for (const id of ['#sellos', '#sumar', '#canjear', '#premio', '#form-usar-saldo']) $(id).hidden = true;
     $('#bloque-puntos').hidden = false;
+    $('#bloque-catalogo').hidden = false;
+    $('#sumar-puntos').textContent = '+ Sumar puntos';
     $('#contador').replaceChildren(numero(p.puntos), ' ', el('small', {}, p.puntos === 1 ? 'punto' : 'puntos'));
     $('#factura-opcional').textContent = p.factura_obligatoria ? '(obligatorio)' : '(opcional)';
     $('#factura').required = p.factura_obligatoria;
@@ -120,14 +124,81 @@
       : [el('p', { class: 'suave' }, 'El negocio todavía no tiene premios en el catálogo.')]));
   }
 
-  // Cuántos puntos daría el monto escrito (el servidor hace la cuenta de verdad).
+  // --- Programa de cashback ----------------------------------------------------
+  // Mismo formulario de compra que los puntos; en vez del catálogo, "Usar saldo".
+  const colones = (n) => `₡${numero(n)}`;
+  function pintarCashback() {
+    const c = cliente.cashback;
+    for (const id of ['#sellos', '#sumar', '#canjear', '#premio', '#bloque-catalogo']) $(id).hidden = true;
+    $('#bloque-puntos').hidden = false;
+    $('#form-usar-saldo').hidden = false;
+    $('#sumar-puntos').textContent = '+ Sumar cashback';
+    $('#contador').replaceChildren(colones(c.saldo), ' ', el('small', {}, 'de saldo'));
+    $('#factura-opcional').textContent = c.factura_obligatoria ? '(obligatorio)' : '(opcional)';
+    $('#factura').required = c.factura_obligatoria;
+    $('#canjeados').textContent = `Veces que usó su saldo: ${cliente.premios_canjeados}`;
+    pintarNivel();
+    calcularVistaPuntos();
+    reiniciarUsoSaldo();
+    $('#monto-saldo').disabled = !c.puede_usar;
+    $('#usar-todo').disabled = !c.puede_usar;
+    $('#vista-saldo').textContent = c.puede_usar
+      ? `Disponible: ${colones(c.saldo)}. El resto de la compra se paga normal.`
+      : c.minimo && c.saldo > 0
+        ? `Podrá usarlo cuando llegue a ${colones(c.minimo)} (le faltan ${colones(c.faltan_para_usar)}).`
+        : 'Todavía no tiene saldo para usar.';
+  }
+
+  // Usar el saldo pide confirmación con un segundo toque, como los canjes.
+  let usoArmado = false;
+  function reiniciarUsoSaldo() {
+    usoArmado = false;
+    $('#usar-saldo').textContent = 'Usar saldo';
+    $('#usar-saldo').disabled = !cliente?.cashback?.puede_usar;
+  }
+  $('#usar-todo').addEventListener('click', () => {
+    $('#monto-saldo').value = numero(cliente.cashback.saldo);
+    reiniciarUsoSaldo();
+  });
+  $('#monto-saldo').addEventListener('input', reiniciarUsoSaldo);
+  $('#form-usar-saldo').addEventListener('submit', async (evento) => {
+    evento.preventDefault();
+    const c = cliente.cashback;
+    const monto = leerMonto($('#monto-saldo').value);
+    if (!monto) return toast('Escriba cuánto del saldo va a usar.', 'error');
+    if (monto > c.saldo) return toast(`El cliente solo tiene ${colones(c.saldo)}.`, 'error');
+    if (!usoArmado) {
+      usoArmado = true;
+      $('#usar-saldo').textContent = `Confirmar ${colones(monto)}`;
+      setTimeout(() => { if (usoArmado) reiniciarUsoSaldo(); }, 5000);
+      return;
+    }
+    $('#usar-saldo').disabled = true;
+    try {
+      const r = await llamar(`/api/clientes/${cliente.id}/usar-saldo`, { metodo: 'POST', cuerpo: { monto } });
+      cliente = r.cliente;
+      $('#monto-saldo').value = '';
+      pintarCashback();
+      toast(`Descuente ${colones(r.usado)} de la compra ✓ (le quedan ${colones(r.puntos_actuales)})`, 'exito');
+    } catch (e) {
+      toast(e.message, 'error');
+      reiniciarUsoSaldo();
+    }
+  });
+
+  // Cuántos puntos o cuánto cashback daría el monto escrito (el servidor hace la cuenta de verdad).
   function calcularVistaPuntos() {
-    const p = cliente?.puntos;
+    const p = cliente?.puntos || cliente?.cashback;
     if (!p) return;
     const monto = leerMonto($('#monto').value);
-    const dara = Math.floor(monto / p.colones_por_punto);
     const partes = [`Regla: ${p.regla}.`];
-    if (monto) partes.push(dara ? `Esta compra suma ${numero(dara)} ${dara === 1 ? 'punto' : 'puntos'}.` : 'Ese monto no alcanza para un punto.');
+    if (cliente.cashback) {
+      const dara = Math.floor((monto * p.porcentaje) / 100 + 1e-9);
+      if (monto) partes.push(dara ? `Esta compra suma ${colones(dara)} de saldo.` : 'Ese monto es muy bajo para sumar cashback.');
+    } else {
+      const dara = Math.floor(monto / p.colones_por_punto);
+      if (monto) partes.push(dara ? `Esta compra suma ${numero(dara)} ${dara === 1 ? 'punto' : 'puntos'}.` : 'Ese monto no alcanza para un punto.');
+    }
     if (p.tope_compra && monto > p.tope_compra) {
       partes.push(rol === 'administrador'
         ? `Supera el tope de ₡${numero(p.tope_compra)}: como administrador puede registrarla.`
@@ -142,7 +213,9 @@
     const boton = $('#sumar-puntos');
     const monto = leerMonto($('#monto').value);
     if (!monto) return toast('Escriba el monto de la compra.', 'error');
-    if (cliente.puntos.factura_obligatoria && !$('#factura').value.trim()) return toast('Escriba el número de factura.', 'error');
+    if ((cliente.puntos || cliente.cashback).factura_obligatoria && !$('#factura').value.trim()) {
+      return toast('Escriba el número de factura.', 'error');
+    }
     boton.disabled = true; // evita sumar dos veces por un doble toque
     try {
       const r = await llamar(`/api/clientes/${cliente.id}/puntos`, {
@@ -151,9 +224,15 @@
       cliente = r.cliente;
       $('#monto').value = '';
       $('#factura').value = '';
-      pintarPuntos();
       const nivel = r.subio_de_nivel && r.cliente?.nivel?.nivel;
-      toast(`+${numero(r.puntos_sumados)} puntos ✓ (lleva ${numero(r.puntos_actuales)})${nivel ? ` · ¡Subió a ${nivel.emoji} ${nivel.nombre}!` : ''}`, 'exito');
+      const subio = nivel ? ` · ¡Subió a ${nivel.emoji} ${nivel.nombre}!` : '';
+      if (cliente.cashback) {
+        pintarCashback();
+        toast(`+${colones(r.puntos_sumados)} de cashback ✓ (saldo ${colones(r.puntos_actuales)})${subio}`, 'exito');
+      } else {
+        pintarPuntos();
+        toast(`+${numero(r.puntos_sumados)} puntos ✓ (lleva ${numero(r.puntos_actuales)})${subio}`, 'exito');
+      }
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -192,6 +271,7 @@
 
   function pintarSellos() {
     if (cliente.puntos) return pintarPuntos();
+    if (cliente.cashback) return pintarCashback();
     $('#bloque-puntos').hidden = true;
     for (const id of ['#sellos', '#sumar']) $(id).hidden = false;
     const meta = cliente.sellos_para_premio;
@@ -299,6 +379,10 @@
       if (negocio.tipo_programa === 'puntos') {
         document.title = `Staff · ${negocio.nombre} · Puntos`;
         $('#exportar-eventos').textContent = 'Historial de puntos';
+      }
+      if (negocio.tipo_programa === 'cashback') {
+        document.title = `Staff · ${negocio.nombre} · Cashback`;
+        $('#exportar-eventos').textContent = 'Historial de cashback';
       }
       iniciarCamara();
     })

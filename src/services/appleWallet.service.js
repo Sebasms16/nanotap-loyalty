@@ -16,6 +16,7 @@ const marca = require('./marca.service');
 const niveles = require('./niveles.service');
 const inactividad = require('./inactividad.service');
 const puntos = require('./puntos.service');
+const cashback = require('./cashback.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -39,11 +40,14 @@ async function generarPass({ cliente, negocio, pass }) {
   const premio = niveles.premioActual(negocio, estado);
   const vigencia = inactividad.aviso(cliente, negocio);
   const conPuntos = puntos.esPuntos(negocio);
+  const conCashback = cashback.esCashback(negocio);
   const saldo = cliente.puntos || 0;
+  // Cómo se llama lo que junta el cliente, para los textos.
+  const queJunta = conCashback ? 'saldo' : conPuntos ? 'puntos' : 'estampas';
 
-  // Con puntos, la franja es una barra de avance con el saldo; con estampas, las estampas.
+  // Con puntos o cashback, la franja depende del saldo; con estampas, de las estampas.
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
-    marca.tiraDelNegocio(negocio, conPuntos ? saldo : sellos, { ancho: 375 * escala, alto: 123 * escala })));
+    marca.tiraDelNegocio(negocio, conPuntos || conCashback ? saldo : sellos, { ancho: 375 * escala, alto: 123 * escala })));
   const archivos = {
     'strip.png': tiras[0],
     'strip@2x.png': tiras[1],
@@ -73,7 +77,7 @@ async function generarPass({ cliente, negocio, pass }) {
       authenticationToken: pass.auth_token,
       webServiceURL: `${env.baseUrl}/api/wallet/apple`,
       organizationName: negocio.nombre,
-      description: `Tarjeta de ${conPuntos ? 'puntos' : 'estampas'} ${negocio.nombre}`,
+      description: `Tarjeta de ${conCashback ? 'cashback' : conPuntos ? 'puntos' : 'estampas'} ${negocio.nombre}`,
       // Sin logoText si el logo ya trae el nombre (lo indica el negocio, o el logo es
       // alargado): así el logo usa todo el ancho en vez de compartirlo con el nombre.
       ...(negocio.ocultar_nombre || await marca.logoEsAncho(negocio) ? {} : { logoText: negocio.nombre }),
@@ -95,7 +99,26 @@ async function generarPass({ cliente, negocio, pass }) {
     ...(estado.nivel.clave === 'bronce' ? {} : { changeMessage: '¡Subió a nivel %@!' }),
   };
   const campoSaldo = { key: 'puntos', label: 'PUNTOS', value: saldo, numberStyle: 'PKNumberStyleDecimal' };
-  if (conPuntos) {
+  if (conCashback) {
+    // Saldo en colones arriba (o abajo, si arriba va el nivel), el % y, si hay mínimo, cuánto falta para usarlo.
+    const enColones = {
+      key: 'saldo', label: 'SALDO', value: cashback.formatoColones(saldo), changeMessage: 'Su saldo de cashback ahora es %@',
+    };
+    const min = cashback.minimo(negocio);
+    const puede = cashback.puedeUsar(negocio, saldo);
+    pkpass.headerFields.push(campoNivel || { ...enColones, textAlignment: 'PKTextAlignmentRight' });
+    pkpass.secondaryFields.push(
+      ...(campoNivel ? [enColones] : []),
+      { key: 'cashback', label: 'CASHBACK', value: cashback.regla(negocio) },
+      ...(min ? [{
+        key: 'faltan',
+        label: puede ? 'PUEDE USARLO' : 'FALTAN',
+        value: puede ? '¡Listo!' : cashback.formatoColones(min - saldo),
+        textAlignment: 'PKTextAlignmentRight',
+        ...(puede ? { changeMessage: '¡Ya puede usar su saldo de cashback!' } : {}),
+      }] : [])
+    );
+  } else if (conPuntos) {
     // Saldo arriba (o abajo, si arriba va el nivel), el próximo premio y cuánto falta.
     const sig = puntos.proximo(negocio, saldo);
     pkpass.headerFields.push(campoNivel || { ...campoSaldo, textAlignment: 'PKTextAlignmentRight' });
@@ -133,11 +156,11 @@ async function generarPass({ cliente, negocio, pass }) {
       value: catalogo.map((p) => `• ${p.nombre}: ${puntos.formatoPuntos(p.puntos)} puntos`).join('\n'),
     }] : []),
     ...(estado ? [{ key: 'nivel_detalle', label: 'Nivel y temporada', value: niveles.resumen(estado) }] : []),
-    ...(conPuntos && estado?.premio ? [{ key: 'beneficio', label: 'Beneficio de su nivel', value: estado.premio }] : []),
-    ...(vigencia ? [{ key: 'vigencia', label: `Vigencia de ${conPuntos ? 'los puntos' : 'las estampas'}`, value: vigencia }] : []),
-    { key: 'canjeados', label: 'Premios canjeados', value: cliente.premios_canjeados },
+    ...((conPuntos || conCashback) && estado?.premio ? [{ key: 'beneficio', label: 'Beneficio de su nivel', value: estado.premio }] : []),
+    ...(vigencia ? [{ key: 'vigencia', label: `Vigencia ${{ saldo: 'del saldo', puntos: 'de los puntos', estampas: 'de las estampas' }[queJunta]}`, value: vigencia }] : []),
+    { key: 'canjeados', label: conCashback ? 'Veces que usó su saldo' : 'Premios canjeados', value: cliente.premios_canjeados },
     { key: 'reglas', label: 'Reglas del programa', value: reglasComoTexto(negocio) },
-    { key: 'consulta', label: `Consultar mis ${conPuntos ? 'puntos' : 'estampas'}`, value: `${env.baseUrl}/${negocio.slug}/consulta` },
+    { key: 'consulta', label: conCashback ? 'Consultar mi saldo' : `Consultar mis ${queJunta}`, value: `${env.baseUrl}/${negocio.slug}/consulta` },
     { key: 'privacidad', label: 'Privacidad', value: `${env.baseUrl}/${negocio.slug}/privacidad` },
     { key: 'codigo', label: 'Código', value: cliente.codigo_qr }
   );

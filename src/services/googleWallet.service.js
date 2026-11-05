@@ -10,6 +10,7 @@ const marca = require('./marca.service');
 const niveles = require('./niveles.service');
 const inactividad = require('./inactividad.service');
 const puntosSvc = require('./puntos.service');
+const cashback = require('./cashback.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -64,7 +65,7 @@ function construirClase(negocio, { logoAncho = false } = {}) {
   return {
     id: idClase(negocio),
     issuerName: negocio.nombre,
-    programName: puntosSvc.esPuntos(negocio) ? 'Tarjeta de puntos' : 'Tarjeta de estampas',
+    programName: cashback.esCashback(negocio) ? 'Tarjeta de cashback' : puntosSvc.esPuntos(negocio) ? 'Tarjeta de puntos' : 'Tarjeta de estampas',
     programLogo: { sourceUri: { uri: urlLogo(negocio) }, contentDescription: descripcionLogo },
     ...(logoAncho && negocio.logo_url ? {
       wideProgramLogo: {
@@ -107,11 +108,38 @@ function objetoConPuntos(cliente, negocio, estado, base) {
   };
 }
 
+// Con cashback: el saldo en colones va en el campo grande; la franja es la barra hasta el
+// saldo mínimo (si el negocio lo fija) o la imagen del negocio.
+function objetoConCashback(cliente, negocio, estado, base) {
+  const saldo = cliente.puntos || 0;
+  const min = cashback.minimo(negocio);
+  const puede = cashback.puedeUsar(negocio, saldo);
+  const enColones = { label: 'Saldo', balance: { string: cashback.formatoColones(saldo) } };
+  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?puntos=${saldo}&v=${marca.versionTira(negocio)}`;
+  return {
+    ...base,
+    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } } : enColones,
+    secondaryLoyaltyPoints: estado ? enColones : { label: 'Cashback', balance: { string: cashback.regla(negocio) } },
+    heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`Saldo de ${cashback.formatoColones(saldo)}`) },
+    textModulesData: [
+      puede
+        ? { id: 'saldo', header: 'Puede usar su saldo', body: `Tiene ${cashback.formatoColones(saldo)} para pagar parte o el total de una compra.` }
+        : min
+          ? { id: 'saldo', header: 'Faltan', body: `${cashback.formatoColones(min - saldo)} de saldo para poder usarlo (desde ${cashback.formatoColones(min)}).` }
+          : { id: 'saldo', header: 'Cashback', body: `Reciba el ${cashback.regla(negocio)} como saldo.` },
+      ...(estado ? [{ id: 'nivel', header: 'Nivel y temporada', body: niveles.resumen(estado) }] : []),
+      ...(estado?.premio ? [{ id: 'beneficio', header: 'Beneficio de su nivel', body: estado.premio }] : []),
+      ...base.textModulesData,
+    ],
+  };
+}
+
 // estado: nivel del cliente (niveles.estadoDelCliente), null si el negocio no usa niveles.
 function construirObjeto(cliente, negocio, estado = null) {
-  if (puntosSvc.esPuntos(negocio)) {
+  if (puntosSvc.esPuntos(negocio) || cashback.esCashback(negocio)) {
+    const conCashback = cashback.esCashback(negocio);
     const vigencia = inactividad.aviso(cliente, negocio);
-    return objetoConPuntos(cliente, negocio, estado, {
+    return (conCashback ? objetoConCashback : objetoConPuntos)(cliente, negocio, estado, {
       id: idObjeto(cliente.id),
       classId: idClase(negocio),
       state: 'ACTIVE',
@@ -119,13 +147,13 @@ function construirObjeto(cliente, negocio, estado = null) {
       accountName: [cliente.nombre, cliente.primer_apellido].filter(Boolean).join(' '),
       barcode: { type: 'QR_CODE', value: cliente.codigo_qr, alternateText: cliente.codigo_qr },
       textModulesData: [
-        ...(vigencia ? [{ id: 'vigencia', header: 'Vigencia de los puntos', body: vigencia }] : []),
-        { id: 'canjeados', header: 'Premios canjeados', body: String(cliente.premios_canjeados) },
+        ...(vigencia ? [{ id: 'vigencia', header: conCashback ? 'Vigencia del saldo' : 'Vigencia de los puntos', body: vigencia }] : []),
+        { id: 'canjeados', header: conCashback ? 'Veces que usó su saldo' : 'Premios canjeados', body: String(cliente.premios_canjeados) },
         { id: 'reglas', header: 'Reglas del programa', body: reglasComoTexto(negocio) },
       ],
       linksModuleData: {
         uris: [
-          { id: 'consulta', uri: `${env.baseUrl}/${negocio.slug}/consulta`, description: 'Consultar mis puntos' },
+          { id: 'consulta', uri: `${env.baseUrl}/${negocio.slug}/consulta`, description: conCashback ? 'Consultar mi saldo' : 'Consultar mis puntos' },
           { id: 'privacidad', uri: `${env.baseUrl}/${negocio.slug}/privacidad`, description: 'Aviso de privacidad' },
         ],
       },

@@ -166,6 +166,13 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   `canjear_puntos`. La tarjeta muestra el saldo, el próximo premio y cuánto falta; la franja es una barra de avance.
   Con niveles, se sube por puntos ganados en la temporada; el reinicio por inactividad también pone los puntos en cero
   (`services/puntos.service.js`). La migración para una base existente está en `src/db/migraciones/`.
+- **Programa de cashback (opcional, por negocio):** `tipo_programa = 'cashback'`. Cada compra suma el
+  `cashback_porcentaje` del monto como saldo en colones (hacia abajo), con la misma función `sumar_puntos` y las
+  mismas reglas de compra (factura, tope y espera). El saldo se guarda en `clientes.puntos` y el staff lo descuenta de
+  una compra con `usar_cashback` (uso parcial, nunca más de lo que hay). Si el negocio fija `cashback_minimo`, el
+  saldo se puede usar solo desde ese monto; la franja es una barra hasta el mínimo o, sin mínimo, la imagen de la
+  estampa. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
+  `src/db/migraciones/2026-11-04-cashback.sql` (`services/cashback.service.js`).
 - **Suscripciones:** el operador anota para cada negocio el plan (`semestral` o `anual`) y el inicio del período
   pagado; el panel calcula el vencimiento (6 o 12 meses después) y la cuenta regresiva, en rojo con menos de un mes
   (o vencida), amarillo con menos de dos y verde con más. «Renovar» empieza el período siguiente el día del vencimiento.
@@ -209,6 +216,7 @@ src/
     walletSync.service.js      propagación a wallets + cola de reintentos; temporadas y reinicio por inactividad
     inactividad.service.js     aviso de la fecha límite y reinicio de tarjetas inactivas
     puntos.service.js          programa de puntos: catálogo, próximo premio, reglas
+    cashback.service.js        programa de cashback: %, saldo mínimo, reglas
     imagen.service.js          PNG de sellos e íconos (sin dependencias)
     qrcode.service.js
   public/                      páginas (inscripción, consulta, privacidad, staff, operador)
@@ -232,8 +240,9 @@ Las rutas de la sección 8 de la especificación, más:
 | `GET`/`POST` | `/api/negocios/:id/staff` | Operador | Listar / crear usuarios de staff |
 | `PATCH` | `/api/staff/:id` | Operador | Activar/desactivar, nombre, nueva contraseña |
 | `GET` | `/api/staff/yo` | Staff | Datos de la sesión |
-| `POST` | `/api/clientes/:id/puntos` | Staff | Programa de puntos: `{ monto, factura }`; los puntos los calcula el servidor |
+| `POST` | `/api/clientes/:id/puntos` | Staff | Puntos o cashback: `{ monto, factura }`; los puntos o el saldo los calcula el servidor |
 | `POST` | `/api/clientes/:id/canje-puntos` | Staff | Canjear un premio del catálogo: `{ premio_id }` |
+| `POST` | `/api/clientes/:id/usar-saldo` | Staff | Cashback: pagar parte de la compra con el saldo: `{ monto }` |
 | `DELETE` | `/api/clientes/:id` | Operador | Eliminación completa de datos (Ley 8968) |
 | `GET` | `/api/negocios/:slug/clientes/export?tipo=eventos` | Staff/Operador | CSV del historial de sellos y canjes |
 

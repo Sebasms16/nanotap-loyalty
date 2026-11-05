@@ -8,6 +8,7 @@ const supabase = require('../db/supabaseClient');
 const estampas = require('./estampas.service');
 const imagen = require('./imagen.service');
 const puntos = require('./puntos.service');
+const cashback = require('./cashback.service');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
@@ -127,7 +128,9 @@ function versionTira(negocio) {
       ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : []),
       ...(negocio.estampa_final_url ? [`final:${negocio.estampa_final_url}`] : []),
       // Con puntos, la barra depende del catálogo (las marcas de cada premio).
-      ...(puntos.esPuntos(negocio) ? [`puntos:${puntos.catalogo(negocio).map((p) => p.puntos).join(',')}`] : [])].join('|'))
+      ...(puntos.esPuntos(negocio) ? [`puntos:${puntos.catalogo(negocio).map((p) => p.puntos).join(',')}`] : []),
+      // Con cashback, la franja es la barra hasta el saldo mínimo o, sin mínimo, la imagen al centro.
+      ...(cashback.esCashback(negocio) ? [`cashback:${cashback.minimo(negocio) || ''}`] : [])].join('|'))
     .digest('hex').slice(0, 10);
 }
 
@@ -185,6 +188,23 @@ async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {})
       fondo: fondoSellos(negocio), sello: negocio.color_secundario || '#ffffff', tarjeta: negocio.color_primario,
       ancho, alto, base,
     });
+  }
+  // Cashback: `llenos` es el saldo. Con saldo mínimo, una barra que se llena hasta
+  // poder usarlo; sin mínimo, la imagen del negocio al centro.
+  if (cashback.esCashback(negocio)) {
+    const fondo = fondoSellos(negocio);
+    const sello = negocio.color_secundario || '#ffffff';
+    const [base, img] = await Promise.all([
+      fondoDelNegocio(negocio, { ancho, alto }),
+      cargarImagen(negocio.sello_url || negocio.logo_url, { negocio_id: negocio.id }),
+    ]);
+    const min = cashback.minimo(negocio);
+    if (min || !img) {
+      return estampas.tiraPuntos({
+        puntos: Math.max(0, llenos), metas: min ? [min] : [], fondo, sello, tarjeta: negocio.color_primario, ancho, alto, base,
+      });
+    }
+    return estampas.tiraImagenCentrada({ imagen: img, fondo, ancho, alto, base });
   }
   const total = negocio.sellos_para_premio;
   const obtenidas = Math.min(Math.max(llenos, 0), total);

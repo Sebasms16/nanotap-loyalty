@@ -195,6 +195,20 @@ test('operador: login y validaciones de alta de negocio', async () => {
   assert.equal((await pedir(`/api/clientes/${cid}/puntos`, json({ monto: 5000 }))).status, 401);
   assert.equal((await pedir(`/api/clientes/${cid}/canje-puntos`, json({ premio_id: 'x' }, token))).status, 401);
 
+  // Cashback: el % y el saldo mínimo se validan antes de tocar la BD; usar saldo exige staff.
+  assert.equal((await negocioCon({ cashback_porcentaje: 0.2 })).status, 400);
+  assert.equal((await negocioCon({ cashback_porcentaje: 60 })).status, 400);
+  assert.equal((await negocioCon({ cashback_porcentaje: 2.55 })).status, 400); // un decimal como máximo
+  assert.equal((await negocioCon({ cashback_minimo: 0 })).status, 400);
+  const nivelesCompras = await negocioCon({ niveles_activos: true, niveles: [{ clave: 'plata', compras: 90000 }, { clave: 'oro', compras: 80000 }] });
+  assert.match((await nivelesCompras.json()).error, /Oro debe pedir más compras/);
+  assert.equal((await pedir(`/api/clientes/${cid}/usar-saldo`, json({ monto: 500 }, token))).status, 401);
+  // Vista previa de una tarjeta de cashback con saldo mínimo: la barra.
+  const previaCashback = await pedir('/api/operador/vista-previa/estampas?tipo=cashback&minimo=5000&llenos=2500&fondo=000000', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: Buffer.alloc(0),
+  });
+  assert.equal(previaCashback.status, 200);
+
   // Un token de operador no sirve como staff.
   assert.equal((await pedir('/api/staff/yo', { headers: { Authorization: `Bearer ${token}` } })).status, 401);
 });

@@ -170,6 +170,143 @@ async function tiraPuntos({ puntos, metas, fondo, sello = '#ffffff', tarjeta = n
     .toBuffer();
 }
 
+// Franja de una tarjeta de cashback sin saldo mínimo: la imagen del negocio (estampa
+// o logo) al centro, sobre el color o la foto de fondo. El saldo va en los campos.
+async function tiraImagenCentrada({ imagen: img, fondo, ancho = 750, alto = 246, base = null }) {
+  const lado = Math.round(alto * 0.72);
+  const icono = await estampaColor(img, lado);
+  const [r, g, b] = hexARgb(fondo);
+  return sharp(base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
+    .composite([{ input: icono, left: Math.round((ancho - lado) / 2), top: Math.round((alto - lado) / 2) }])
+    .png()
+    .toBuffer();
+}
+
+// Estilos de la franja de puntos. 'linea' es la barra continua de tiraPuntos.
+const ESTILOS_PUNTOS = ['linea', 'tramos', 'proximo', 'iconos'];
+
+// Cuánto lleva el cliente del tramo que termina en metas[i] (0 a 1).
+function avanceDelTramo(puntos, metas, i) {
+  const desde = i === 0 ? 0 : metas[i - 1];
+  return Math.min(1, Math.max(0, (puntos - desde) / Math.max(1, metas[i] - desde)));
+}
+
+// Marca de premio: aro relleno con punto al centro si ya le alcanza; si no, aro punteado.
+function marcaPremio(cx, cy, radio, { alcanzado, color, relleno }) {
+  if (alcanzado) {
+    return `<circle cx="${cx}" cy="${cy}" r="${radio}" fill="${color}"/>`
+      + `<circle cx="${cx}" cy="${cy}" r="${radio * 0.42}" fill="${relleno}"/>`;
+  }
+  const r = radio * 0.94;
+  const trazo = (2 * Math.PI * r) / 24;
+  return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${relleno}" stroke="${color}" stroke-opacity="0.75"`
+    + ` stroke-width="${Math.max(2, radio * 0.14)}" stroke-dasharray="${trazo} ${trazo}" stroke-linecap="round"/>`;
+}
+
+// Barra con fondo tenue y la parte avanzada en color sólido.
+function barra(xa, xb, cy, grosor, fraccion, color) {
+  const largo = Math.max(0, xb - xa);
+  const lleno = largo * fraccion;
+  return `<rect x="${xa}" y="${cy - grosor / 2}" width="${largo}" height="${grosor}" rx="${grosor / 2}" fill="${color}" fill-opacity="0.3"/>`
+    + (lleno > 0.5 ? `<rect x="${xa}" y="${cy - grosor / 2}" width="${Math.max(lleno, grosor)}" height="${grosor}" rx="${grosor / 2}" fill="${color}"/>` : '');
+}
+
+/**
+ * Franja de puntos en el estilo elegido por el negocio:
+ *  - linea:   barra continua con una marca en cada premio (proporcional a los puntos).
+ *  - tramos:  un tramo del mismo largo por premio; cada uno se llena hasta su premio.
+ *  - proximo: una barra grande solo hasta el próximo premio, y abajo un punto por premio.
+ *  - iconos:  la imagen de cada premio (a color si ya le alcanza, en gris si no), unidas por la barra.
+ * @param {(Buffer|null)[]} [imagenes] una por premio, para 'proximo' e 'iconos'; null = círculo
+ */
+async function tiraPuntosEstilo({ estilo = 'linea', imagenes = [], ...opciones }) {
+  const { puntos, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null } = opciones;
+  const metas = [...opciones.metas].sort((a, b) => a - b);
+  if (estilo === 'linea' || !ESTILOS_PUNTOS.includes(estilo) || !metas.length) return tiraPuntos({ ...opciones, metas });
+
+  const fondoRgb = base ? await colorPromedio(base) : hexARgb(fondo);
+  const color = colorQueSeVe(fondoRgb, [sello, tarjeta]);
+  const relleno = `rgb(${fondoRgb.join(',')})`;
+  const x0 = ancho * 0.12;
+  const x1 = ancho * 0.88;
+  const cy = alto / 2;
+  const grosor = alto * 0.09;
+  let svg = '';
+  const capas = [];
+
+  if (estilo === 'tramos') {
+    const radio = alto * 0.11;
+    const hueco = alto * 0.035;
+    const paso = (x1 - x0) / metas.length;
+    const centro = (i) => x0 + paso * (i + 1) - radio;
+    metas.forEach((meta, i) => {
+      const inicio = i === 0 ? x0 : centro(i - 1) + radio + hueco;
+      svg += barra(inicio, centro(i) - radio - hueco, cy, grosor, avanceDelTramo(puntos, metas, i), color);
+      svg += marcaPremio(centro(i), cy, radio, { alcanzado: puntos >= meta, color, relleno });
+    });
+  }
+
+  if (estilo === 'proximo') {
+    const i = metas.findIndex((meta) => meta > puntos);
+    const todos = i === -1;
+    const actual = todos ? metas.length - 1 : i;
+    const yBarra = alto * 0.43;
+    const lado = Math.round(alto * 0.44);
+    const centro = x1 - lado / 2;
+    svg += barra(x0, centro - lado / 2 - alto * 0.05, yBarra, alto * 0.13, todos ? 1 : avanceDelTramo(puntos, metas, actual), color);
+    const imagen = imagenes[actual];
+    if (imagen) {
+      const icono = await estampaColor(imagen, lado);
+      capas.push({ input: todos ? icono : await estampaGris(icono), left: Math.round(centro - lado / 2), top: Math.round(yBarra - lado / 2) });
+    } else {
+      svg += marcaPremio(centro, yBarra, lado * 0.45, { alcanzado: todos, color, relleno });
+    }
+    // Un punto por premio del catálogo: los que ya le alcanzan, rellenos.
+    const r = alto * 0.03;
+    const sep = r * 4;
+    const yPuntos = alto * 0.82;
+    const primero = (x0 + x1) / 2 - (sep * (metas.length - 1)) / 2;
+    metas.forEach((meta, k) => {
+      const cx = primero + sep * k;
+      svg += puntos >= meta
+        ? `<circle cx="${cx}" cy="${yPuntos}" r="${r}" fill="${color}"/>`
+        : `<circle cx="${cx}" cy="${yPuntos}" r="${r * 0.85}" fill="none" stroke="${color}" stroke-opacity="0.7" stroke-width="${Math.max(1.5, r * 0.35)}"/>`;
+    });
+  }
+
+  if (estilo === 'iconos') {
+    const lado = Math.round(Math.min(alto * 0.4, ((x1 - x0) / metas.length) * 0.55));
+    const paso = (x1 - lado / 2 - x0) / metas.length;
+    const centros = metas.map((_, i) => x0 + paso * (i + 1));
+    metas.forEach((meta, i) => {
+      const inicio = i === 0 ? x0 : centros[i - 1];
+      svg += barra(inicio, centros[i], cy, grosor * 0.8, avanceDelTramo(puntos, metas, i), color);
+    });
+    await Promise.all(metas.map(async (meta, i) => {
+      const alcanzado = puntos >= meta;
+      // Círculo del color del fondo detrás de cada imagen, para que la barra no se vea a través.
+      svg += `<circle cx="${centros[i]}" cy="${cy}" r="${lado * 0.5}" fill="${relleno}"/>`;
+      const imagen = imagenes[i];
+      if (!imagen) {
+        svg += marcaPremio(centros[i], cy, lado * 0.45, { alcanzado, color, relleno });
+        return;
+      }
+      const icono = await estampaColor(imagen, Math.round(lado * 0.9));
+      capas.push({
+        input: alcanzado ? icono : await estampaGris(icono),
+        left: Math.round(centros[i] - lado * 0.45),
+        top: Math.round(cy - lado * 0.45),
+      });
+    }));
+  }
+
+  const [r, g, b] = hexARgb(fondo);
+  return sharp(base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
+    .composite([{ input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}">${svg}</svg>`) }, ...capas])
+    .png()
+    .toBuffer();
+}
+
 // --- Foto de fondo de la zona de estampas -----------------------------------
 // Efectos que puede elegir el negocio para que las estampas se lean sobre la foto.
 const EFECTOS_FONDO = ['nitida', 'borrosa', 'oscura', 'borrosa_oscura', 'clara', 'byn', 'color'];
@@ -282,6 +419,6 @@ async function iconoDesdeLogo(logo, tam, fondo) {
 }
 
 module.exports = {
-  tiraConImagenes, tiraPuntos, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
+  tiraConImagenes, tiraPuntos, tiraPuntosEstilo, tiraImagenCentrada, ESTILOS_PUNTOS, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
   proporcionLogo, PROPORCION_ANCHO,
 };

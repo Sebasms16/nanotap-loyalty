@@ -19,31 +19,39 @@ const { limiteInscripcion } = require('../middlewares/limites.middleware');
 
 const router = express.Router();
 
-// Niveles: [{clave, tarjetas, puntos, premio}]. Bronce empieza en 0; los demás
-// necesitan cada vez más tarjetas canjeadas (estampas) o puntos ganados (puntos)
-// en la temporada. Se guardan las dos metas: el programa del negocio elige cuál usa.
+// Niveles: [{clave, tarjetas, puntos, compras, premio}]. Bronce empieza en 0; los demás
+// necesitan cada vez más tarjetas canjeadas (estampas), puntos ganados (puntos) o
+// colones comprados (cashback) en la temporada. Se guardan las tres metas: el programa
+// del negocio elige cuál usa.
 function validarNiveles(lista) {
   if (lista === null) return null;
   if (!Array.isArray(lista)) throw new HttpError(400, 'Los niveles no tienen el formato esperado.');
   let tarjetasAntes = 0;
   let puntosAntes = 0;
+  let comprasAntes = 0;
   return niveles.NIVELES.map((nivel) => {
     const dado = lista.find((n) => n?.clave === nivel.clave) || {};
     const premio = v.texto(dado.premio, `premio del nivel ${nivel.nombre}`, { max: 120 }) || '';
-    if (nivel.clave === 'bronce') return { clave: nivel.clave, tarjetas: 0, puntos: 0, premio };
+    if (nivel.clave === 'bronce') return { clave: nivel.clave, tarjetas: 0, puntos: 0, compras: 0, premio };
     const tarjetas = v.entero(dado.tarjetas ?? niveles.TARJETAS_POR_DEFECTO[nivel.clave],
       `tarjetas para ${nivel.nombre}`, { min: 1, max: 100 });
     const puntos = v.entero(dado.puntos ?? niveles.PUNTOS_POR_DEFECTO[nivel.clave],
       `puntos para ${nivel.nombre}`, { min: 1, max: 100000000 });
+    const compras = v.entero(dado.compras ?? niveles.COMPRAS_POR_DEFECTO[nivel.clave],
+      `compras (₡) para ${nivel.nombre}`, { min: 1, max: 1000000000 });
     if (tarjetas <= tarjetasAntes) {
       throw new HttpError(400, `${nivel.nombre} debe pedir más tarjetas que el nivel anterior.`);
     }
     if (puntos <= puntosAntes) {
       throw new HttpError(400, `${nivel.nombre} debe pedir más puntos que el nivel anterior.`);
     }
+    if (compras <= comprasAntes) {
+      throw new HttpError(400, `${nivel.nombre} debe pedir más compras que el nivel anterior.`);
+    }
     tarjetasAntes = tarjetas;
     puntosAntes = puntos;
-    return { clave: nivel.clave, tarjetas, puntos, premio };
+    comprasAntes = compras;
+    return { clave: nivel.clave, tarjetas, puntos, compras, premio };
   });
 }
 
@@ -121,9 +129,19 @@ function datosNegocio(cuerpo, { parcial }) {
   if (cuerpo.fondo_estampas_efecto !== undefined) {
     d.fondo_estampas_efecto = unaDe(cuerpo.fondo_estampas_efecto, estampas.EFECTOS_FONDO, 'El efecto de la foto de fondo no es válido.');
   }
-  // Programa de puntos (en vez de estampas) y sus reglas.
+  // Programa de puntos o de cashback (en vez de estampas) y sus reglas.
   if (cuerpo.tipo_programa !== undefined) {
-    d.tipo_programa = unaDe(cuerpo.tipo_programa, ['estampas', 'puntos'], 'El programa debe ser de estampas o de puntos.');
+    d.tipo_programa = unaDe(cuerpo.tipo_programa, ['estampas', 'puntos', 'cashback'], 'El programa debe ser de estampas, puntos o cashback.');
+  }
+  if (cuerpo.cashback_porcentaje !== undefined) {
+    const pct = Number(cuerpo.cashback_porcentaje);
+    if (!Number.isFinite(pct) || pct < 0.5 || pct > 50 || Math.abs(Math.round(pct * 10) - pct * 10) > 1e-9) {
+      throw new HttpError(400, 'El cashback debe ser entre 0,5 % y 50 %, con un decimal como máximo.');
+    }
+    d.cashback_porcentaje = Math.round(pct * 10) / 10;
+  }
+  if (cuerpo.cashback_minimo !== undefined) {
+    d.cashback_minimo = enteroONulo(cuerpo.cashback_minimo, 'saldo mínimo para usar el cashback', { min: 1, max: 100000000 });
   }
   if (cuerpo.colones_por_punto !== undefined) {
     d.colones_por_punto = v.entero(cuerpo.colones_por_punto, 'colones por punto', { min: 1, max: 1000000 });
@@ -202,7 +220,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto', 'tipo_programa', 'colones_por_punto', 'premios_puntos',
-    'puntos_factura_obligatoria'].some((k) => k in datos);
+    'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

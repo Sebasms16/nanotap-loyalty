@@ -58,8 +58,23 @@
           <p class="suave" id="vista-puntos" aria-live="polite"></p>
           <button class="boton bloque grande" id="sumar-puntos" type="submit">+ Sumar puntos</button>
         </form>
-        <h3 style="margin:1.25rem 0 0.5rem">Canjear un premio</h3>
-        <div id="catalogo" class="catalogo"></div>
+        <div id="bloque-catalogo">
+          <h3 style="margin:1.25rem 0 0.5rem">Canjear un premio</h3>
+          <div id="catalogo" class="catalogo"></div>
+        </div>
+        <!-- Cashback: el cliente paga parte de la compra con su saldo -->
+        <form id="form-usar-saldo" novalidate hidden>
+          <h3 style="margin:1.25rem 0 0.5rem">Usar saldo</h3>
+          <div class="campo">
+            <label for="monto-saldo">Monto a pagar con el saldo (₡)</label>
+            <input id="monto-saldo" type="text" inputmode="numeric" autocomplete="off">
+          </div>
+          <p class="suave" id="vista-saldo" aria-live="polite"></p>
+          <div class="fila">
+            <button class="boton secundario" id="usar-todo" type="button">Usar todo</button>
+            <button class="boton exito" id="usar-saldo" type="submit">Usar saldo</button>
+          </div>
+        </form>
       </div>
 
       <div class="botones">

@@ -589,7 +589,69 @@ test('niveles con puntos: suben por puntos ganados en la temporada', () => {
   assert.equal(niveles.describir(neg, 500, temporada).nivel.clave, 'plata'); // por defecto: 500
   const oro = niveles.describir(neg, 1200, temporada);
   assert.deepEqual([oro.nivel.clave, oro.premio, oro.faltan], ['oro', '10 % menos', 1800]); // diamante por defecto: 3000
-  assert.match(niveles.resumen(oro), /1\s?200 puntos ganados esta temporada · faltan 1800 para 💎 Diamante/);
+  assert.match(niveles.resumen(oro), /1\s?200 puntos ganados esta temporada · faltan 1\s?800 para 💎 Diamante/);
   // El mismo negocio con estampas usa la meta en tarjetas.
   assert.equal(niveles.describir({ ...neg, tipo_programa: 'estampas' }, 4, temporada).nivel.clave, 'oro');
+});
+
+test('programa de cashback: saldo en colones, mínimo para usarlo, tarjetas, reglas y franja', async () => {
+  const cashback = require('../src/services/cashback.service');
+  const reglas = require('../src/utils/reglas');
+  const marca = require('../src/services/marca.service');
+  const inactividad = require('../src/services/inactividad.service');
+  const sharp = require('sharp');
+  // Postgres devuelve el numeric como texto en algunos clientes: se acepta igual.
+  const neg = { ...negocio, tipo_programa: 'cashback', cashback_porcentaje: '2.5', cashback_minimo: 1000 };
+  assert.equal(cashback.calcular(neg, 12999), 324); // hacia abajo, igual que sumar_puntos
+  assert.equal(cashback.calcular({ ...neg, cashback_porcentaje: 0.7 }, 1000), 7); // sin errores de redondeo
+  assert.match(cashback.regla(neg), /^2,5\s%\sde cada compra$/);
+  assert.deepEqual(cashback.paraMostrar(neg, 800), {
+    saldo: 800, porcentaje: 2.5, regla: cashback.regla(neg), minimo: 1000, puede_usar: false, faltan_para_usar: 200,
+  });
+  assert.equal(cashback.paraMostrar({ ...neg, cashback_minimo: null }, 1).puede_usar, true);
+  assert.equal(cashback.paraMostrar(negocio, 5), null); // negocio de estampas
+
+  const texto = reglas.reglasSugeridas({ ...neg, inactividad_meses: 6 }).join('\n');
+  assert.match(texto, /Recibe el 2,5\s%\sde cada compra en PodoSport como saldo/);
+  assert.match(texto, /Cuando su saldo llegue a ₡1\s000, puede usarlo/);
+  assert.match(texto, /Si pasan 6 meses sin comprar, el saldo de cashback vuelve a cero/);
+  assert.doesNotMatch(texto, /estampa|puntos/i);
+  const aviso = inactividad.aviso({ puntos: 50, ultima_actividad: '2026-10-01T12:00:00Z' }, { ...neg, inactividad_meses: 2 });
+  assert.match(aviso, /^Compre antes del 1 de diciembre de 2026; si no, su saldo vuelve a cero\.$/);
+
+  const conSaldo = { ...cliente, puntos: 800 };
+  const objeto = googleWallet.construirObjeto(conSaldo, neg);
+  assert.deepEqual(objeto.loyaltyPoints, { label: 'Saldo', balance: { string: '₡800' } });
+  assert.equal(objeto.secondaryLoyaltyPoints.label, 'Cashback');
+  assert.match(objeto.textModulesData.find((m) => m.id === 'saldo').body, /^₡200 de saldo para poder usarlo/);
+  assert.equal(googleWallet.construirClase(neg).programName, 'Tarjeta de cashback');
+
+  const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+  const leer = async (c, n) => JSON.parse(leerZip(await appleWallet.generarPass({ cliente: c, negocio: n, pass }))['pass.json'].toString('utf8'));
+  const json = await leer(conSaldo, neg);
+  assert.deepEqual([json.storeCard.headerFields[0].label, json.storeCard.headerFields[0].value], ['SALDO', '₡800']);
+  assert.deepEqual(json.storeCard.secondaryFields.map((c) => [c.label, c.value]), [['CASHBACK', cashback.regla(neg)], ['FALTAN', '₡200']]);
+  assert.equal(json.storeCard.backFields.find((c) => c.key === 'canjeados').label, 'Veces que usó su saldo');
+  assert.match(json.description, /Tarjeta de cashback/);
+  const listo = await leer({ ...cliente, puntos: 1500 }, neg);
+  assert.deepEqual(listo.storeCard.secondaryFields.at(-1).value, '¡Listo!');
+  const sinMinimo = await leer(conSaldo, { ...neg, cashback_minimo: null });
+  assert.equal(sinMinimo.storeCard.secondaryFields.length, 1); // solo el %: no hay nada que esperar
+
+  // Franja: barra hasta el mínimo; sin mínimo, la imagen (aquí no hay: barra igual). Cambia la versión con el mínimo.
+  const tira = await marca.tiraDelNegocio({ ...neg, color_fondo_sellos: '#000000' }, 800);
+  assert.deepEqual([(await sharp(tira).metadata()).width, (await sharp(tira).metadata()).height], [750, 246]);
+  assert.notEqual(marca.versionTira({ ...neg, cashback_minimo: 2000 }), marca.versionTira(neg));
+});
+
+test('niveles con cashback: suben por lo comprado en la temporada, en colones', () => {
+  const niveles = require('../src/services/niveles.service');
+  const neg = { ...negocio, tipo_programa: 'cashback', niveles_activos: true, niveles: [{ clave: 'plata', compras: 40000, premio: 'Envío gratis' }] };
+  const temporada = niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, new Date('2026-10-14T15:00:00Z'));
+  assert.equal(niveles.describir(neg, 39999, temporada).nivel.clave, 'bronce');
+  const plata = niveles.describir(neg, 82000, temporada);
+  assert.deepEqual([plata.nivel.clave, plata.unidad, plata.premio, plata.faltan], ['plata', 'compras', 'Envío gratis', 68000]); // oro: 150 000
+  assert.match(niveles.resumen(plata), /₡82\s000 en compras esta temporada · faltan ₡68\s000 para 🥇 Oro/);
+  const texto = require('../src/utils/reglas').reglasSugeridas(neg).join('\n');
+  assert.match(texto, /🥈 Plata \(al comprar ₡40\s000 en la temporada\): Envío gratis\./);
 });

@@ -50,13 +50,18 @@ create table if not exists negocios (
   -- Suscripción del negocio a Nanotap (la anota el operador; vence 6 o 12 meses después del inicio).
   suscripcion_plan text check (suscripcion_plan in ('semestral', 'anual')),
   suscripcion_inicio date,
-  -- Programa de puntos (en vez de estampas). Ver services/puntos.service.js.
-  tipo_programa text not null default 'estampas' check (tipo_programa in ('estampas', 'puntos')),
+  -- Programa de puntos o de cashback (en vez de estampas). Ver services/puntos.service.js
+  -- y services/cashback.service.js. Los dos guardan el saldo en clientes.puntos y usan
+  -- las mismas reglas de compra (factura, tope y espera).
+  tipo_programa text not null default 'estampas' check (tipo_programa in ('estampas', 'puntos', 'cashback')),
   colones_por_punto integer not null default 1000 check (colones_por_punto between 1 and 1000000),
   premios_puntos jsonb not null default '[]',     -- catálogo: [{id, nombre, puntos}]
   puntos_factura_obligatoria boolean not null default false,
   puntos_tope_compra integer check (puntos_tope_compra > 0), -- por encima, solo un administrador (null = sin tope)
-  puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440) -- entre compras del mismo cliente
+  puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440), -- entre compras del mismo cliente
+  -- Cashback: el % de cada compra que vuelve como saldo en colones, y el saldo mínimo para usarlo (null = cualquiera).
+  cashback_porcentaje numeric(4, 1) not null default 5 check (cashback_porcentaje between 0.5 and 50),
+  cashback_minimo integer check (cashback_minimo > 0)
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -99,6 +104,11 @@ alter table negocios add column if not exists premios_puntos jsonb not null defa
 alter table negocios add column if not exists puntos_factura_obligatoria boolean not null default false;
 alter table negocios add column if not exists puntos_tope_compra integer check (puntos_tope_compra > 0);
 alter table negocios add column if not exists puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440);
+alter table negocios drop constraint if exists negocios_tipo_programa_check;
+alter table negocios add constraint negocios_tipo_programa_check check (tipo_programa in ('estampas', 'puntos', 'cashback'));
+alter table negocios add column if not exists cashback_porcentaje numeric(4, 1) not null default 5
+  check (cashback_porcentaje between 0.5 and 50);
+alter table negocios add column if not exists cashback_minimo integer check (cashback_minimo > 0);
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -249,7 +259,7 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
        n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
-       n.puntos_tope_compra, n.puntos_espera_minutos
+       n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo
 from negocios n;
 
 -- =========================================================
@@ -279,7 +289,7 @@ begin
   if not found then raise exception 'cliente_no_encontrado'; end if;
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   if not v_activo then raise exception 'negocio_inactivo'; end if;
-  if v_tipo = 'puntos' then raise exception 'programa_de_puntos'; end if;
+  if v_tipo <> 'estampas' then raise exception 'programa_de_puntos'; end if; -- puntos o cashback
 
   update clientes
      set sellos_actuales = sellos_actuales + 1, ultima_actividad = now()
@@ -324,7 +334,7 @@ begin
   if not found then raise exception 'cliente_no_encontrado'; end if;
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   if not v_activo then raise exception 'negocio_inactivo'; end if;
-  if v_tipo = 'puntos' then raise exception 'programa_de_puntos'; end if;
+  if v_tipo <> 'estampas' then raise exception 'programa_de_puntos'; end if; -- puntos o cashback
   if v_sellos < v_meta then raise exception 'sellos_insuficientes'; end if;
 
   update clientes
@@ -347,9 +357,10 @@ end;
 $$;
 
 -- =========================================================
--- SUMAR PUNTOS (programa de puntos)
+-- SUMAR PUNTOS (programa de puntos) o SALDO (programa de cashback)
 -- Los puntos los calcula la base de datos a partir del monto: el navegador
--- nunca dice cuántos. Todas las reglas del negocio se revisan aquí, dentro de la
+-- nunca dice cuántos. Con cashback, lo que se suma es el % de la compra en
+-- colones (hacia abajo). Todas las reglas del negocio se revisan aquí, dentro de la
 -- misma transacción que suma: factura obligatoria y sin repetir, tope por
 -- compra (p_sin_tope = el staff es administrador) y espera entre compras.
 -- =========================================================
@@ -374,7 +385,7 @@ begin
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   select * into v_n from negocios where id = p_negocio_id;
   if not v_n.activo then raise exception 'negocio_inactivo'; end if;
-  if v_n.tipo_programa <> 'puntos' then raise exception 'programa_de_estampas'; end if;
+  if v_n.tipo_programa not in ('puntos', 'cashback') then raise exception 'programa_de_estampas'; end if;
   if p_monto is null or p_monto <= 0 or p_monto > 100000000 then raise exception 'monto_invalido'; end if;
   if v_n.puntos_factura_obligatoria and v_factura is null then raise exception 'factura_requerida'; end if;
   if v_n.puntos_tope_compra is not null and p_monto > v_n.puntos_tope_compra and not coalesce(p_sin_tope, false) then
@@ -387,8 +398,13 @@ begin
     raise exception 'compra_muy_seguida';
   end if;
 
-  v_puntos := p_monto / v_n.colones_por_punto; -- división entera: se redondea hacia abajo
-  if v_puntos < 1 then raise exception 'monto_insuficiente'; end if;
+  if v_n.tipo_programa = 'cashback' then
+    v_puntos := floor(p_monto * v_n.cashback_porcentaje / 100)::integer;
+    if v_puntos < 1 then raise exception 'monto_sin_cashback'; end if;
+  else
+    v_puntos := p_monto / v_n.colones_por_punto; -- división entera: se redondea hacia abajo
+    if v_puntos < 1 then raise exception 'monto_insuficiente'; end if;
+  end if;
 
   if v_factura is not null then
     begin
@@ -429,7 +445,7 @@ begin
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
   select * into v_n from negocios where id = p_negocio_id;
   if not v_n.activo then raise exception 'negocio_inactivo'; end if;
-  if v_n.tipo_programa <> 'puntos' then raise exception 'programa_de_estampas'; end if;
+  if v_n.tipo_programa <> 'puntos' then raise exception 'programa_sin_catalogo'; end if;
 
   select e.valor into v_premio
     from jsonb_array_elements(v_n.premios_puntos) as e(valor)
@@ -460,6 +476,57 @@ stable
 set search_path = public
 as $$
   select coalesce(sum(cantidad), 0)::integer
+    from sellos_eventos
+   where cliente_id = p_cliente_id and tipo = 'puntos' and creado_en >= p_desde and creado_en < p_hasta;
+$$;
+
+-- =========================================================
+-- USAR SALDO (programa de cashback)
+-- El cliente paga parte de su compra con el saldo: se resta lo que el staff
+-- digita, nunca más de lo que tiene. Si el negocio fija un saldo mínimo, el
+-- cliente tiene que haberlo alcanzado para usarlo.
+-- =========================================================
+create or replace function usar_cashback(p_cliente_id uuid, p_negocio_id uuid, p_staff_id uuid, p_monto integer)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_negocio_id uuid;
+  v_n negocios%rowtype;
+  v_saldo integer;
+  v_usos integer;
+begin
+  select c.negocio_id, c.puntos into v_negocio_id, v_saldo from clientes c where c.id = p_cliente_id for update;
+  if not found then raise exception 'cliente_no_encontrado'; end if;
+  if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
+  select * into v_n from negocios where id = p_negocio_id;
+  if not v_n.activo then raise exception 'negocio_inactivo'; end if;
+  if v_n.tipo_programa <> 'cashback' then raise exception 'programa_sin_cashback'; end if;
+  if p_monto is null or p_monto <= 0 or p_monto > 100000000 then raise exception 'monto_invalido'; end if;
+  if v_n.cashback_minimo is not null and v_saldo < v_n.cashback_minimo then raise exception 'saldo_bajo_minimo'; end if;
+  if p_monto > v_saldo then raise exception 'saldo_insuficiente'; end if;
+
+  update clientes
+     set puntos = puntos - p_monto, premios_canjeados = premios_canjeados + 1, ultima_actividad = now()
+   where id = p_cliente_id
+   returning puntos, premios_canjeados into v_saldo, v_usos;
+  insert into sellos_eventos (cliente_id, staff_id, tipo, cantidad, monto, premio)
+  values (p_cliente_id, p_staff_id, 'canje_puntos', -p_monto, p_monto, 'Saldo de cashback');
+  update wallet_passes set ultima_actualizacion = now() where cliente_id = p_cliente_id;
+
+  return json_build_object('puntos_actuales', v_saldo, 'premios_canjeados', v_usos, 'usado', p_monto);
+end;
+$$;
+
+-- Colones comprados por un cliente en un rango (niveles por temporada con cashback).
+create or replace function compras_en_rango(p_cliente_id uuid, p_desde timestamptz, p_hasta timestamptz)
+returns bigint
+language sql
+stable
+set search_path = public
+as $$
+  select coalesce(sum(monto), 0)::bigint
     from sellos_eventos
    where cliente_id = p_cliente_id and tipo = 'puntos' and creado_en >= p_desde and creado_en < p_hasta;
 $$;
@@ -662,15 +729,16 @@ select json_build_object(
      where c.fecha_nacimiento is not null
        and extract(month from c.fecha_nacimiento) = extract(month from hoy.t)
   ),
-  -- Avance de nivel en la temporada: tarjetas canjeadas o, con puntos, puntos ganados
+  -- Avance de nivel en la temporada: tarjetas canjeadas, puntos ganados o, con cashback, colones comprados
   -- (se devuelve como 'canjes' para no cambiar el formato).
   'niveles', case when p_temporada_desde is null then null else (
     select coalesce(json_agg(json_build_object('canjes', k, 'clientes', n) order by k), '[]'::json)
       from (select coalesce(t.valor, 0) k, count(*) n
               from cli
               left join (select e.cliente_id,
-                                case when (select tipo_programa from negocios where id = p_negocio_id) = 'puntos'
-                                     then coalesce(sum(e.cantidad) filter (where e.tipo = 'puntos'), 0)
+                                case (select tipo_programa from negocios where id = p_negocio_id)
+                                     when 'puntos' then coalesce(sum(e.cantidad) filter (where e.tipo = 'puntos'), 0)
+                                     when 'cashback' then coalesce(sum(e.monto) filter (where e.tipo = 'puntos'), 0)
                                      else count(*) filter (where e.tipo = 'canje') end as valor
                            from sellos_eventos e join cli c2 on c2.id = e.cliente_id
                           where e.creado_en >= p_temporada_desde and e.creado_en < p_temporada_hasta
@@ -767,6 +835,8 @@ revoke execute on function reiniciar_inactivos() from public;
 revoke execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) from public;
 revoke execute on function canjear_puntos(uuid, uuid, uuid, text) from public;
 revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from public;
+revoke execute on function usar_cashback(uuid, uuid, uuid, integer) from public;
+revoke execute on function compras_en_rango(uuid, timestamptz, timestamptz) from public;
 revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from public;
 revoke execute on function analisis_operador(timestamptz, timestamptz, text) from public;
 
@@ -780,6 +850,8 @@ begin
     revoke execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) from anon, authenticated;
     revoke execute on function canjear_puntos(uuid, uuid, uuid, text) from anon, authenticated;
     revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from anon, authenticated;
+    revoke execute on function usar_cashback(uuid, uuid, uuid, integer) from anon, authenticated;
+    revoke execute on function compras_en_rango(uuid, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_operador(timestamptz, timestamptz, text) from anon, authenticated;
   end if;
@@ -791,6 +863,8 @@ begin
     grant execute on function sumar_puntos(uuid, uuid, uuid, integer, text, boolean) to service_role;
     grant execute on function canjear_puntos(uuid, uuid, uuid, text) to service_role;
     grant execute on function puntos_ganados(uuid, timestamptz, timestamptz) to service_role;
+    grant execute on function usar_cashback(uuid, uuid, uuid, integer) to service_role;
+    grant execute on function compras_en_rango(uuid, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_operador(timestamptz, timestamptz, text) to service_role;
   end if;

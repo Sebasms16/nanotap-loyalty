@@ -202,8 +202,11 @@
     $('#n-nombre').value = n?.nombre || '';
     $('#n-slug').value = n?.slug || '';
     $('#n-slug').disabled = Boolean(n); // el slug no cambia: rompería los enlaces y QR impresos
-    // Programa: estampas o puntos (antes de pintar los niveles, que dependen de él).
-    document.querySelector(`input[name="n-tipo"][value="${n?.tipo_programa === 'puntos' ? 'puntos' : 'estampas'}"]`).checked = true;
+    // Programa: estampas, puntos o cashback (antes de pintar los niveles, que dependen de él).
+    const tipo = ['puntos', 'cashback'].includes(n?.tipo_programa) ? n.tipo_programa : 'estampas';
+    document.querySelector(`input[name="n-tipo"][value="${tipo}"]`).checked = true;
+    $('#n-cashback-porcentaje').value = n?.cashback_porcentaje ?? 5;
+    $('#n-cashback-minimo').value = n?.cashback_minimo ?? '';
     $('#n-colones-punto').value = n?.colones_por_punto || 1000;
     $('#n-catalogo').replaceChildren(...(Array.isArray(n?.premios_puntos) ? n.premios_puntos : []).map(filaCatalogo));
     $('#n-factura-obligatoria').checked = Boolean(n?.puntos_factura_obligatoria);
@@ -298,22 +301,30 @@
   // --- Niveles por temporada -----------------------------------------------------
   // Mismos niveles y valores por defecto que el servidor (services/niveles.service.js).
   const NIVELES = [
-    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0, puntos: 0 },
-    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2, puntos: 500 },
-    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4, puntos: 1500 },
-    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6, puntos: 3000 },
+    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0, puntos: 0, compras: 0 },
+    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2, puntos: 500, compras: 50000 },
+    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4, puntos: 1500, compras: 150000 },
+    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6, puntos: 3000, compras: 300000 },
   ];
   for (let meses = 1; meses <= 12; meses++) {
     $('#n-temporada-meses').append(el('option', { value: meses }, `${meses} ${meses === 1 ? 'mes' : 'meses'}`));
   }
 
-  // La meta de cada nivel va en tarjetas canjeadas (estampas) o en puntos ganados (puntos).
-  const metaDeNivel = () => (tipoPrograma() === 'puntos' ? 'puntos' : 'tarjetas');
+  // La meta de cada nivel va en tarjetas canjeadas (estampas), puntos ganados (puntos)
+  // o colones comprados en la temporada (cashback).
+  const metaDeNivel = () => ({ puntos: 'puntos', cashback: 'compras' })[tipoPrograma()] || 'tarjetas';
+  const METAS = ['tarjetas', 'puntos', 'compras'];
+  const TEXTO_META = {
+    tarjetas: { columna: 'Tarjetas para llegar', aria: 'Tarjetas canjeadas', max: 100 },
+    puntos: { columna: 'Puntos en la temporada', aria: 'Puntos ganados', max: 100000000 },
+    compras: { columna: 'Compras en la temporada (₡)', aria: 'Colones comprados', max: 1000000000 },
+  };
 
   function pintarNiveles(n) {
     const propios = Array.isArray(n?.niveles) ? n.niveles : [];
     const meta = metaDeNivel();
-    const conPuntos = meta === 'puntos';
+    const texto = TEXTO_META[meta];
+    const conPuntos = meta !== 'tarjetas'; // puntos o cashback: el premio del nivel es un beneficio
     const filas = NIVELES.map((nivel) => {
       const propio = propios.find((p) => p?.clave === nivel.clave) || {};
       return el('div', { class: 'fila-nivel' },
@@ -321,8 +332,8 @@
         nivel.clave === 'bronce'
           ? el('span', { class: 'desde-inscripcion' }, 'Desde la inscripción')
           : el('input', {
-            type: 'number', min: 1, max: conPuntos ? 100000000 : 100, value: propio[meta] ?? nivel[meta], 'data-tarjetas': nivel.clave,
-            'aria-label': `${conPuntos ? 'Puntos ganados' : 'Tarjetas canjeadas'} para llegar a ${nivel.nombre}`,
+            type: 'number', min: 1, max: texto.max, value: propio[meta] ?? nivel[meta], 'data-tarjetas': nivel.clave,
+            'aria-label': `${texto.aria} para llegar a ${nivel.nombre}`,
           }),
         el('input', {
           class: 'premio-nivel', type: 'text', maxlength: 120, value: propio.premio || '', 'data-premio-nivel': nivel.clave,
@@ -332,11 +343,12 @@
     });
     $('#n-niveles').replaceChildren(
       el('div', { class: 'fila-nivel encabezado' },
-        el('span', {}, 'Nivel'), el('span', {}, conPuntos ? 'Puntos en la temporada' : 'Tarjetas para llegar'),
+        el('span', {}, 'Nivel'), el('span', {}, texto.columna),
         el('span', {}, conPuntos ? 'Beneficio de este nivel' : 'Premio de este nivel')),
       ...filas);
-    $('#n-niveles-ayuda-puntos').hidden = !conPuntos;
-    $('#n-niveles-ayuda-estampas').hidden = conPuntos;
+    $('#n-niveles-ayuda-puntos').hidden = meta !== 'puntos';
+    $('#n-niveles-ayuda-cashback').hidden = meta !== 'compras';
+    $('#n-niveles-ayuda-estampas').hidden = meta !== 'tarjetas';
   }
 
   const nivelesActivos = () => $('#n-niveles-activos').checked;
@@ -382,9 +394,9 @@
   // Lo que se envía al guardar (solo si los niveles están activos: si no, se conserva lo anterior).
   function datosDeNiveles() {
     if (!nivelesActivos()) return { niveles_activos: false };
-    // Se manda la meta que se ve; la del otro programa se conserva como estaba guardada.
+    // Se manda la meta que se ve; las de los otros programas se conservan como estaban guardadas.
     const meta = metaDeNivel();
-    const otra = meta === 'puntos' ? 'tarjetas' : 'puntos';
+    const otras = METAS.filter((m) => m !== meta);
     const guardados = Array.isArray(editando?.niveles) ? editando.niveles : [];
     return {
       niveles_activos: true,
@@ -393,7 +405,7 @@
         return {
           clave: nivel.clave,
           [meta]: nivel.clave === 'bronce' ? 0 : Number(document.querySelector(`[data-tarjetas="${nivel.clave}"]`).value),
-          ...(Number.isInteger(guardado[otra]) ? { [otra]: guardado[otra] } : {}),
+          ...Object.fromEntries(otras.filter((otra) => Number.isInteger(guardado[otra])).map((otra) => [otra, guardado[otra]])),
           premio: document.querySelector(`[data-premio-nivel="${nivel.clave}"]`).value,
         };
       }),
@@ -431,41 +443,73 @@
     }).filter((p) => p.nombre && Number.isInteger(p.puntos) && p.puntos > 0).sort((a, b) => a.puntos - b.puntos);
   }
 
+  const porcentajeCashback = () => Number($('#n-cashback-porcentaje').value) || 5;
+  const minimoCashback = () => {
+    const valor = Number.parseInt($('#n-cashback-minimo').value, 10);
+    return valor > 0 ? valor : null;
+  };
+
   function mostrarTipo() {
-    const conPuntos = tipoPrograma() === 'puntos';
+    const tipo = tipoPrograma();
+    const conPuntos = tipo === 'puntos';
+    const conCashback = tipo === 'cashback';
     $('#n-config-puntos').hidden = !conPuntos;
+    $('#n-config-cashback').hidden = !conCashback;
+    $('#n-config-compras').hidden = tipo === 'estampas'; // factura, tope y espera
+    // Con cashback solo sirve la imagen de la estampa: va al centro de la franja si no hay saldo mínimo.
     $('#n-bloque-estampas').hidden = conPuntos;
-    $('#n-fila-premio-estampas').hidden = conPuntos;
+    $('#n-campo-modo').hidden = conCashback;
+    $('#n-campo-pendientes').hidden = conCashback;
+    if (conCashback) {
+      $('#n-campo-misma').hidden = false;
+      $('#n-campo-final').hidden = true;
+      $('#n-campo-distintas').hidden = true;
+    } else {
+      mostrarModo();
+    }
+    $('#n-fila-premio-estampas').hidden = tipo !== 'estampas';
+    $('#n-regla-cashback').textContent = `Una compra de ₡12 500 suma ₡${numeroCR(Math.floor((12500 * porcentajeCashback()) / 100 + 1e-9))} de saldo.`;
     const colones = Number($('#n-colones-punto').value) || 1000;
     $('#n-regla-puntos').textContent = `1 punto por cada ₡${numeroCR(colones)}: una compra de ₡12 500 suma `
       + `${numeroCR(Math.floor(12500 / colones))} puntos.`;
   }
   document.querySelectorAll('input[name="n-tipo"]').forEach((opcion) => opcion.addEventListener('change', () => {
-    pintarNiveles(editando); // la meta de los niveles cambia de tarjetas a puntos
+    pintarNiveles(editando); // la meta de los niveles cambia con el programa
     ponerSaldoPrevio();
     mostrarTipo();
     actualizarVistaPrevia();
   }));
   $('#n-colones-punto').addEventListener('input', mostrarTipo);
+  $('#n-cashback-porcentaje').addEventListener('input', mostrarTipo);
+  $('#n-cashback-minimo').addEventListener('change', () => { ponerSaldoPrevio(); actualizarVistaPrevia(); });
 
   // Valor inicial del control de la vista previa: 3 estampas, o con puntos el 40 % del
   // premio más caro. El máximo se sube antes: un range recorta el valor a su máximo actual.
   function ponerSaldoPrevio() {
     const rango = $('#n-prev-llenos');
-    const conPuntos = tipoPrograma() === 'puntos';
-    const tope = conPuntos ? Math.max(100, ...catalogoActual().map((p) => p.puntos)) : 30;
+    const conEstampas = tipoPrograma() === 'estampas';
+    const tope = conEstampas ? 30 : topeVistaPrevia();
     rango.max = tope;
-    rango.value = conPuntos ? Math.round(tope * 0.4) : 3;
+    rango.value = conEstampas ? 3 : Math.round(tope * 0.4);
   }
 
-  // Lo que se envía al guardar. Con estampas no se mandan: lo de puntos queda como estaba.
+  // Máximo del control de la vista previa con saldo: el premio más caro (puntos) o
+  // 1,5 veces el saldo mínimo (cashback; sin mínimo, ₡20 000).
+  function topeVistaPrevia() {
+    if (tipoPrograma() === 'cashback') return minimoCashback() ? Math.round(minimoCashback() * 1.5) : 20000;
+    return Math.max(100, ...catalogoActual().map((p) => p.puntos));
+  }
+
+  // Lo que se envía al guardar. Con estampas no se mandan: lo de puntos y cashback queda como estaba.
   function datosDePuntos() {
-    if (tipoPrograma() !== 'puntos') return { tipo_programa: 'estampas' };
+    const tipo = tipoPrograma();
+    if (tipo === 'estampas') return { tipo_programa: 'estampas' };
     const entero = (selector) => (String($(selector).value).trim() === '' ? null : Number($(selector).value));
     return {
-      tipo_programa: 'puntos',
-      colones_por_punto: Number($('#n-colones-punto').value),
-      premios_puntos: catalogoActual(),
+      tipo_programa: tipo,
+      ...(tipo === 'puntos'
+        ? { colones_por_punto: Number($('#n-colones-punto').value), premios_puntos: catalogoActual() }
+        : { cashback_porcentaje: porcentajeCashback(), cashback_minimo: minimoCashback() }),
       puntos_factura_obligatoria: $('#n-factura-obligatoria').checked,
       puntos_tope_compra: entero('#n-tope'),
       puntos_espera_minutos: entero('#n-espera'),
@@ -693,14 +737,15 @@
   function actualizarVistaPrevia() {
     const nombre = $('#n-nombre').value.trim() || 'Nombre del negocio';
     const conPuntos = tipoPrograma() === 'puntos';
-    const metas = conPuntos ? catalogoActual().map((p) => p.puntos) : [];
-    // Con puntos, el control de la vista previa es el saldo (hasta el premio más caro).
-    const total = conPuntos ? Math.max(100, ...metas) : Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
+    const conCashback = tipoPrograma() === 'cashback';
+    // Con puntos o cashback, el control de la vista previa es el saldo.
+    const total = conPuntos || conCashback ? topeVistaPrevia() : Math.min(30, Math.max(1, Number($('#n-sellos').value) || 10));
     const rango = $('#n-prev-llenos');
     rango.max = total;
     const llenos = Math.min(Number(rango.value), total);
-    $('#n-prev-que').textContent = conPuntos ? 'Puntos' : 'Estampas obtenidas';
-    $('#n-prev-llenos-valor').textContent = conPuntos ? `${numeroCR(llenos)} puntos` : `${llenos} de ${total}`;
+    $('#n-prev-que').textContent = conCashback ? 'Saldo' : conPuntos ? 'Puntos' : 'Estampas obtenidas';
+    $('#n-prev-llenos-valor').textContent = conCashback ? `₡${numeroCR(llenos)}`
+      : conPuntos ? `${numeroCR(llenos)} puntos` : `${llenos} de ${total}`;
     const premio = $('#n-premio').value.trim() || 'Premio';
     const fondo = $('#n-primario').value;
     const texto = $('#n-secundario').value;
@@ -726,6 +771,26 @@
     document.querySelector('.vista-tarjeta [data-faltan]').textContent = faltan === 0 ? '¡Listo!' : String(faltan);
     document.querySelector('.vista-tarjeta [data-etiqueta-premio]').textContent = 'PREMIO';
     document.querySelector('.vista-tarjeta [data-etiqueta-premio-largo]').textContent = 'Premio';
+    document.querySelector('.vista-tarjeta [data-etiqueta-faltan]').textContent = 'FALTAN';
+    document.querySelector('.vista-tarjeta [data-bloque-faltan]').hidden = false;
+    if (conCashback) {
+      // Lo mismo que muestran las tarjetas de cashback: saldo, el % y, si hay mínimo, cuánto falta para usarlo.
+      const regla = `${porcentajeCashback().toLocaleString('es-CR')} % de cada compra`;
+      const minimo = minimoCashback();
+      document.querySelectorAll('.vista-tarjeta [data-premio]').forEach((n) => { n.textContent = regla; });
+      document.querySelector('.vista-tarjeta [data-etiqueta-premio]').textContent = 'CASHBACK';
+      document.querySelector('.vista-tarjeta [data-etiqueta-premio-largo]').textContent = 'Cashback';
+      if (!conNiveles) {
+        document.querySelector('.vista-tarjeta [data-etiqueta-contador]').textContent = 'SALDO';
+        document.querySelector('.vista-tarjeta [data-contador]').textContent = `₡${numeroCR(llenos)}`;
+        document.querySelector('.vista-tarjeta [data-etiqueta-contador-largo]').textContent = 'Saldo';
+        document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = `₡${numeroCR(llenos)}`;
+      }
+      document.querySelector('.vista-tarjeta [data-bloque-faltan]').hidden = !minimo;
+      const puede = minimo && llenos >= minimo;
+      document.querySelector('.vista-tarjeta [data-etiqueta-faltan]').textContent = puede ? 'PUEDE USARLO' : 'FALTAN';
+      document.querySelector('.vista-tarjeta [data-faltan]').textContent = puede ? '¡Listo!' : `₡${numeroCR(Math.max(0, (minimo || 0) - llenos))}`;
+    }
     if (conPuntos) {
       // Lo mismo que muestran las tarjetas de puntos: saldo, próximo premio y cuánto falta.
       const catalogo = catalogoActual();
@@ -860,6 +925,7 @@
       efecto: $('#n-fondo-efecto').value,
       tipo: tipoPrograma(),
       metas: tipoPrograma() === 'puntos' ? catalogoActual().map((p) => p.puntos).join(',') : '',
+      minimo: tipoPrograma() === 'cashback' ? minimoCashback() || '' : '',
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });

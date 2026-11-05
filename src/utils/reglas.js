@@ -4,6 +4,7 @@
 const niveles = require('../services/niveles.service');
 const inactividad = require('../services/inactividad.service');
 const puntos = require('../services/puntos.service');
+const cashback = require('../services/cashback.service');
 
 function reglasDeNiveles(negocio) {
   const lista = niveles.configuracion(negocio);
@@ -19,6 +20,16 @@ function reglasDeNiveles(negocio) {
       `${duracion}; los puntos que tenga se conservan.`,
     ];
   }
+  if (cashback.esCashback(negocio)) {
+    return [
+      'Según lo que compre en la temporada, sube de nivel:',
+      ...lista.map((n) => {
+        const desde = n.tarjetas === 0 ? 'desde la inscripción' : `al comprar ${puntos.formatoColones(n.tarjetas)} en la temporada`;
+        return `${n.emoji} ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
+      }),
+      `${duracion}; el saldo que tenga se conserva.`,
+    ];
+  }
   return [
     `Al completar ${negocio.sellos_para_premio} estampas recibe el premio de su nivel:`,
     ...lista.map((n) => (n.tarjetas === 0
@@ -29,6 +40,18 @@ function reglasDeNiveles(negocio) {
 }
 
 function reglasSugeridas(negocio) {
+  if (cashback.esCashback(negocio)) {
+    return [
+      ...cashback.reglasDeCashback(negocio),
+      ...(niveles.activos(negocio) ? reglasDeNiveles(negocio) : []),
+      ...(inactividad.activo(negocio) ? [inactividad.regla(negocio)] : []),
+      'El saldo solo se usa en compras en el negocio: no se cambia por dinero en efectivo.',
+      'El cashback no se otorga por compras anteriores a la inscripción.',
+      'La tarjeta es personal: el saldo no se puede transferir a otra persona.',
+      'No acumulable con otras promociones, salvo que el negocio indique lo contrario.',
+      `${negocio.nombre} puede modificar o terminar el programa avisándolo con anticipación.`,
+    ];
+  }
   if (puntos.esPuntos(negocio)) {
     return [
       ...puntos.reglasDePuntos(negocio),

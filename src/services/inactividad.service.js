@@ -35,11 +35,13 @@ const formato = (fecha) => new Intl.DateTimeFormat('es-CR', { day: 'numeric', mo
 const plazo = (meses) => `${meses} ${meses === 1 ? 'mes' : 'meses'}`;
 
 const conPuntos = (negocio) => negocio?.tipo_programa === 'puntos';
+const conCashback = (negocio) => negocio?.tipo_programa === 'cashback';
 
 // Línea para las reglas sugeridas del programa.
 function regla(negocio) {
   const meses = negocio.inactividad_meses;
   const pasan = `Si ${meses === 1 ? 'pasa' : 'pasan'} ${plazo(meses)}`;
+  if (conCashback(negocio)) return `${pasan} sin comprar, el saldo de cashback vuelve a cero.`;
   return conPuntos(negocio)
     ? `${pasan} sin sumar puntos, los puntos acumulados vuelven a cero.`
     : `${pasan} sin recibir una estampa, las estampas acumuladas vuelven a cero.`;
@@ -49,8 +51,9 @@ function regla(negocio) {
 function aviso(cliente, negocio) {
   if (!activo(negocio)) return null;
   const limite = fechaLimite(cliente, negocio);
-  const saldo = conPuntos(negocio) ? cliente.puntos : cliente.sellos_actuales;
+  const saldo = conPuntos(negocio) || conCashback(negocio) ? cliente.puntos : cliente.sellos_actuales;
   if (!saldo || !limite) return regla(negocio);
+  if (conCashback(negocio)) return `Compre antes del ${formato(limite)}; si no, su saldo vuelve a cero.`;
   return conPuntos(negocio)
     ? `Sume puntos antes del ${formato(limite)}; si no, sus puntos vuelven a cero.`
     : `Reciba su próxima estampa antes del ${formato(limite)}; si no, sus estampas vuelven a cero.`;

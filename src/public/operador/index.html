@@ -105,7 +105,25 @@
               <legend>Tipo de programa</legend>
               <label class="casilla"><input type="radio" name="n-tipo" value="estampas" checked> Estampas: una por compra, y al completarlas, el premio</label>
               <label class="casilla"><input type="radio" name="n-tipo" value="puntos"> Puntos: según el monto de la compra, y se cambian por premios de un catálogo</label>
+              <label class="casilla"><input type="radio" name="n-tipo" value="cashback"> Cashback: un % de cada compra vuelve como saldo en colones, para pagar en otra compra</label>
             </fieldset>
+
+            <!-- Programa de cashback -->
+            <div id="n-config-cashback" hidden>
+              <div class="fila">
+                <div class="campo">
+                  <label for="n-cashback-porcentaje">Cashback (% de cada compra)</label>
+                  <input id="n-cashback-porcentaje" type="number" min="0.5" max="50" step="0.5" value="5">
+                  <p class="suave" id="n-regla-cashback"></p>
+                </div>
+                <div class="campo">
+                  <label for="n-cashback-minimo">Saldo mínimo para usarlo (₡) <span class="opcional">(opcional)</span></label>
+                  <input id="n-cashback-minimo" type="number" min="1" placeholder="Sin mínimo">
+                  <p class="ayuda">Hasta llegar a este saldo, el cliente lo acumula pero no lo puede usar. En la tarjeta se ve una
+                    barra que se llena hasta el mínimo; sin mínimo, se ve la imagen de la estampa (o el logo).</p>
+                </div>
+              </div>
+            </div>
 
             <!-- Programa de puntos -->
             <div id="n-config-puntos" hidden>
@@ -122,10 +140,14 @@
                 <div id="n-catalogo" class="catalogo-editor"></div>
                 <button type="button" class="boton chico secundario" id="n-agregar-premio">+ Agregar premio</button>
               </fieldset>
+            </div>
+
+            <!-- Reglas de las compras: las usan puntos y cashback -->
+            <div id="n-config-compras" hidden>
               <fieldset class="campo">
                 <legend>Seguridad <span class="opcional">(opcional)</span></legend>
                 <label class="casilla"><input id="n-factura-obligatoria" type="checkbox"> Pedir siempre el número de factura
-                  <span class="opcional">(aunque sea opcional, si el staff lo escribe, una factura nunca suma puntos dos veces)</span></label>
+                  <span class="opcional">(aunque sea opcional, si el staff lo escribe, una factura nunca suma dos veces)</span></label>
                 <div class="fila">
                   <div class="campo">
                     <label for="n-tope">Tope por compra (₡)</label>
@@ -142,7 +164,7 @@
             </div>
 
             <div id="n-bloque-estampas">
-            <fieldset class="campo">
+            <fieldset class="campo" id="n-campo-modo">
               <legend>Imagen de las estampas</legend>
               <label class="casilla"><input type="radio" name="n-modo-estampas" value="misma" checked> La misma imagen para todas</label>
               <label class="casilla"><input type="radio" name="n-modo-estampas" value="ultima"> Todas iguales y la última diferente
@@ -184,7 +206,7 @@
               <input id="n-estampa-archivo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
             </fieldset>
 
-            <fieldset class="campo">
+            <fieldset class="campo" id="n-campo-pendientes">
               <legend>Estampas que faltan</legend>
               <label class="casilla"><input type="radio" name="n-pendientes" value="gris" checked> En gris: el cliente ve qué estampas le faltan</label>
               <label class="casilla"><input type="radio" name="n-pendientes" value="ocultas"> Ocultas: un círculo vacío, sin revelar la imagen (sorpresa)</label>
@@ -250,6 +272,9 @@
                   ganan en la temporada</strong> (los canjes no los bajan de nivel). El premio de cada nivel es un beneficio que se
                   muestra en la tarjeta y al staff (por ejemplo, «10 % de descuento»); los canjes siguen siendo del catálogo.
                   Al terminar la temporada todos vuelven a Bronce; los puntos que tengan se conservan.</p>
+                <p class="ayuda" id="n-niveles-ayuda-cashback" hidden>Todos empiezan en Bronce y suben según <strong>lo que
+                  compran en la temporada</strong> (en colones; usar el saldo no los baja de nivel). El premio de cada nivel es un
+                  beneficio que se muestra en la tarjeta y al staff. Al terminar la temporada todos vuelven a Bronce; el saldo se conserva.</p>
                 <p class="ayuda" id="n-niveles-ayuda-estampas">Todos empiezan en Bronce y suben según cuántas tarjetas <strong>canjean en la temporada</strong>.
                   Al canjear, el cliente recibe el premio de su nivel (si lo deja vacío, se usa la "Descripción del premio").
                   Al terminar la temporada todos vuelven a Bronce; las estampas que lleven se conservan.
@@ -315,7 +340,7 @@
               <img class="tira-previa" data-tira alt="Zona de estampas">
               <div class="ios-campos">
                 <div><small data-etiqueta-premio>PREMIO</small><b data-premio></b></div>
-                <div class="der"><small>FALTAN</small><b data-faltan></b></div>
+                <div class="der" data-bloque-faltan><small data-etiqueta-faltan>FALTAN</small><b data-faltan></b></div>
               </div>
               <div class="qr-previa"><img src="/img/qr-ejemplo.png" alt="Código QR de ejemplo"></div>
             </div>

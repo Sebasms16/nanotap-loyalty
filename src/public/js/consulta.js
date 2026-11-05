@@ -16,7 +16,18 @@
       $('#resultado').hidden = false;
       $('#saludo').textContent = `Hola, ${r.nombre}`;
       const pequeno = (texto) => Object.assign(document.createElement('small'), { textContent: texto });
-      if (r.puntos) {
+      if (r.cashback) {
+        // Cashback: saldo en colones y si ya lo puede usar.
+        const c = r.cashback;
+        $('#contador').replaceChildren(`₡${c.saldo.toLocaleString('es-CR')}`, ' ', pequeno('de saldo'));
+        $('#sellos').replaceChildren();
+        mensaje($('#estado'), c.puede_usar
+          ? `Puede usar su saldo para pagar parte o el total de su próxima compra. Recibe el ${c.regla}.`
+          : c.minimo
+            ? `Le faltan ₡${c.faltan_para_usar.toLocaleString('es-CR')} de saldo para poder usarlo. Recibe el ${c.regla}.`
+            : `Recibe el ${c.regla} como saldo.`,
+          c.puede_usar ? 'exito' : 'aviso');
+      } else if (r.puntos) {
         // Programa de puntos: saldo y el próximo premio del catálogo.
         const sig = r.puntos.proximo;
         $('#contador').replaceChildren(r.puntos.puntos.toLocaleString('es-CR'), ' ', pequeno('puntos'));
@@ -34,7 +45,8 @@
           : `Le falta${faltan === 1 ? '' : 'n'} ${faltan} sello${faltan === 1 ? '' : 's'} para: ${r.descripcion_premio}.`,
           r.premio_disponible ? 'exito' : 'aviso');
       }
-      $('#canjeados').textContent = r.premios_canjeados ? `Premios canjeados: ${r.premios_canjeados}` : '';
+      $('#canjeados').textContent = !r.premios_canjeados ? ''
+        : r.cashback ? `Veces que usó su saldo: ${r.premios_canjeados}` : `Premios canjeados: ${r.premios_canjeados}`;
       // Nivel de la temporada (si el negocio usa niveles).
       $('#nivel').hidden = !r.nivel;
       $('#nivel').textContent = r.nivel ? r.nivel.resumen : '';

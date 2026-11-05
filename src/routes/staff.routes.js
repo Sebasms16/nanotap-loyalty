@@ -57,7 +57,7 @@ router.get('/yo', requiereStaff, async (req, res) => {
   const { data: negocio, error } = await supabase
     .from('negocios')
     .select('slug, nombre, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, '
-      + 'tipo_programa, colones_por_punto, puntos_factura_obligatoria, puntos_tope_compra')
+      + 'tipo_programa, colones_por_punto, puntos_factura_obligatoria, puntos_tope_compra, cashback_porcentaje, cashback_minimo')
     .eq('id', req.staff.negocio_id).single();
   if (error) throw errorDb(error, 'leer negocio del staff');
   res.json({
