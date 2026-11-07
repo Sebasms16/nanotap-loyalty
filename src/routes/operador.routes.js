@@ -111,9 +111,10 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     fondo_estampas_url: null,
     fondo_estampas_efecto: estampas.EFECTOS_FONDO.includes(req.query.efecto) ? req.query.efecto : 'nitida',
     // Programa de puntos: ?tipo=puntos, ?metas=50,120,300 (costo de cada premio) y ?llenos= es el saldo.
-    // Cashback: ?tipo=cashback y ?porcentaje= (el que va escrito en la franja).
+    // Cashback: ?tipo=cashback, ?porcentaje= (el que va escrito en la franja) y ?texto=0 (solo la foto).
     tipo_programa: ['puntos', 'cashback'].includes(req.query.tipo) ? req.query.tipo : 'estampas',
     cashback_porcentaje: Math.min(50, Math.max(0.5, Math.round((Number(req.query.porcentaje) || 5) * 10) / 10)),
+    cashback_texto_franja: req.query.texto !== '0',
     premios_puntos: String(req.query.metas || '').split(',').map(Number)
       .filter((n) => Number.isInteger(n) && n > 0).slice(0, 12)
       .map((puntos, i) => ({ id: String(i), nombre: String(i), puntos })),

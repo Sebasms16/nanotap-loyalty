@@ -61,7 +61,9 @@ create table if not exists negocios (
   puntos_espera_minutos integer check (puntos_espera_minutos between 1 and 1440), -- entre compras del mismo cliente
   -- Cashback: el % de cada compra que vuelve como saldo en colones, y el saldo mínimo para usarlo (null = cualquiera).
   cashback_porcentaje numeric(4, 1) not null default 5 check (cashback_porcentaje between 0.5 and 50),
-  cashback_minimo integer check (cashback_minimo > 0)
+  cashback_minimo integer check (cashback_minimo > 0),
+  -- La franja de cashback lleva escrito "5 % de cashback"; false = solo la foto (una portada propia).
+  cashback_texto_franja boolean not null default true
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -109,6 +111,7 @@ alter table negocios add constraint negocios_tipo_programa_check check (tipo_pro
 alter table negocios add column if not exists cashback_porcentaje numeric(4, 1) not null default 5
   check (cashback_porcentaje between 0.5 and 50);
 alter table negocios add column if not exists cashback_minimo integer check (cashback_minimo > 0);
+alter table negocios add column if not exists cashback_texto_franja boolean not null default true;
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -259,7 +262,7 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
        n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
-       n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo
+       n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo, n.cashback_texto_franja
 from negocios n;
 
 -- =========================================================

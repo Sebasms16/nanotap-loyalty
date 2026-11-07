@@ -19,6 +19,9 @@ const usaSaldo = (negocio) => ['puntos', 'cashback'].includes(negocio?.tipo_prog
 const porcentaje = (negocio) => Number(negocio?.cashback_porcentaje) || 5;
 const minimo = (negocio) => (Number.isInteger(negocio?.cashback_minimo) && negocio.cashback_minimo > 0 ? negocio.cashback_minimo : null);
 
+// Si la franja lleva escrito el porcentaje (por defecto sí); si no, solo la foto.
+const textoEnFranja = (negocio) => negocio?.cashback_texto_franja !== false;
+
 // "5 %" o "2,5 %"
 const formatoPorcentaje = (valor) => `${new Intl.NumberFormat('es-CR', { maximumFractionDigits: 1 }).format(valor)} %`;
 
@@ -56,6 +59,6 @@ function paraMostrar(negocio, saldo = 0) {
 }
 
 module.exports = {
-  esCashback, usaSaldo, porcentaje, minimo, calcular, regla, puedeUsar, reglasDeCashback, paraMostrar,
+  esCashback, usaSaldo, porcentaje, minimo, textoEnFranja, calcular, regla, puedeUsar, reglasDeCashback, paraMostrar,
   formatoPorcentaje, formatoColones,
 };

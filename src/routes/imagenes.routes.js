@@ -48,7 +48,7 @@ async function negocioParaImagen(id, version, calcularVersion = marca.versionTir
     .from('negocios')
     .select('id, logo_url, sello_url, color_primario, color_secundario, color_fondo_sellos, sellos_para_premio, '
       + 'estampas_urls, estampa_final_url, estampas_pendientes, fondo_estampas_url, fondo_estampas_efecto, '
-      + 'tipo_programa, premios_puntos, cashback_porcentaje')
+      + 'tipo_programa, premios_puntos, cashback_porcentaje, cashback_texto_franja')
     .eq('id', id).maybeSingle();
   if (error) throw errorDb(error, 'leer negocio para imagen');
   if (negocios.size >= 100) negocios.delete(negocios.keys().next().value);

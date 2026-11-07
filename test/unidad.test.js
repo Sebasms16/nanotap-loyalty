@@ -645,6 +645,10 @@ test('programa de cashback: saldo en colones, mínimo para usarlo, tarjetas, reg
   assert.ok((await sharp(tira).stats()).channels[0].max > 200, 'lleva el texto en claro sobre el fondo negro');
   assert.ok(tira.equals(await marca.tiraDelNegocio(negro, 0)));
   assert.notEqual(marca.versionTira({ ...neg, cashback_porcentaje: 10 }), marca.versionTira(neg));
+  // Sin texto: solo el fondo (aquí, negro liso), para una portada que diseña el negocio.
+  const sinTexto = await marca.tiraDelNegocio({ ...negro, cashback_texto_franja: false }, 800);
+  assert.equal((await sharp(sinTexto).stats()).channels[0].max, 0);
+  assert.notEqual(marca.versionTira({ ...neg, cashback_texto_franja: false }), marca.versionTira(neg));
   assert.doesNotMatch(objeto.heroImage.sourceUri.uri, /puntos=/);
 });
 

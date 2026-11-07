@@ -143,6 +143,7 @@ function datosNegocio(cuerpo, { parcial }) {
   if (cuerpo.cashback_minimo !== undefined) {
     d.cashback_minimo = enteroONulo(cuerpo.cashback_minimo, 'saldo mínimo para usar el cashback', { min: 1, max: 100000000 });
   }
+  if (cuerpo.cashback_texto_franja !== undefined) d.cashback_texto_franja = Boolean(cuerpo.cashback_texto_franja);
   if (cuerpo.colones_por_punto !== undefined) {
     d.colones_por_punto = v.entero(cuerpo.colones_por_punto, 'colones por punto', { min: 1, max: 1000000 });
   }
@@ -220,7 +221,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto', 'tipo_programa', 'colones_por_punto', 'premios_puntos',
-    'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo'].some((k) => k in datos);
+    'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo', 'cashback_texto_franja'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

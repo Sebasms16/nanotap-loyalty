@@ -207,6 +207,7 @@
     document.querySelector(`input[name="n-tipo"][value="${tipo}"]`).checked = true;
     $('#n-cashback-porcentaje').value = n?.cashback_porcentaje ?? 5;
     $('#n-cashback-minimo').value = n?.cashback_minimo ?? '';
+    document.querySelector(`input[name="n-cashback-franja"][value="${n?.cashback_texto_franja === false ? 'foto' : 'texto'}"]`).checked = true;
     $('#n-colones-punto').value = n?.colones_por_punto || 1000;
     $('#n-catalogo').replaceChildren(...(Array.isArray(n?.premios_puntos) ? n.premios_puntos : []).map(filaCatalogo));
     $('#n-factura-obligatoria').checked = Boolean(n?.puntos_factura_obligatoria);
@@ -444,6 +445,7 @@
   }
 
   const porcentajeCashback = () => Number($('#n-cashback-porcentaje').value) || 5;
+  const textoEnFranja = () => document.querySelector('input[name="n-cashback-franja"]:checked').value === 'texto';
   const minimoCashback = () => {
     const valor = Number.parseInt($('#n-cashback-minimo').value, 10);
     return valor > 0 ? valor : null;
@@ -457,13 +459,17 @@
     $('#n-config-cashback').hidden = !conCashback;
     $('#n-config-compras').hidden = tipo === 'estampas'; // factura, tope y espera
     // Puntos y cashback no usan imágenes de estampas. Con cashback la franja es la foto
-    // del negocio con el porcentaje escrito: la foto es lo principal.
+    // del negocio con el porcentaje escrito, o solo la foto (una portada que diseña el negocio).
     $('#n-bloque-estampas').hidden = tipo !== 'estampas';
-    $('#n-fondo-titulo').textContent = conCashback ? 'Foto del negocio' : 'Foto de fondo de las estampas';
+    const portada = conCashback && !textoEnFranja();
+    $('#n-fondo-titulo').textContent = portada ? 'Portada de la tarjeta'
+      : conCashback ? 'Foto del negocio' : 'Foto de fondo de las estampas';
     $('#n-fondo-opcional').textContent = conCashback
       ? '(recomendada; si no, el color de fondo)' : '(opcional; va en lugar del color de fondo)';
     $('#n-fondo-ayuda-estampas').hidden = conCashback;
-    $('#n-fondo-ayuda-cashback').hidden = !conCashback;
+    $('#n-fondo-ayuda-cashback').hidden = !conCashback || portada;
+    $('#n-fondo-ayuda-portada').hidden = !portada;
+    $('#n-franja-pct').textContent = `${String(porcentajeCashback()).replace('.', ',')} %`;
     $('#n-fondo-sellos-titulo').textContent = conCashback ? 'Fondo de la franja' : 'Fondo de las estampas';
     if (tipo === 'estampas') mostrarModo();
     $('#n-fila-premio-estampas').hidden = tipo !== 'estampas';
@@ -481,6 +487,10 @@
   $('#n-colones-punto').addEventListener('input', mostrarTipo);
   $('#n-cashback-porcentaje').addEventListener('input', mostrarTipo);
   $('#n-cashback-porcentaje').addEventListener('change', actualizarVistaPrevia); // el % va escrito en la franja
+  document.querySelectorAll('input[name="n-cashback-franja"]').forEach((opcion) => opcion.addEventListener('change', () => {
+    mostrarTipo();
+    actualizarVistaPrevia();
+  }));
   $('#n-cashback-minimo').addEventListener('change', () => { ponerSaldoPrevio(); actualizarVistaPrevia(); });
 
   // Valor inicial del control de la vista previa: 3 estampas, o con puntos el 40 % del
@@ -509,7 +519,7 @@
       tipo_programa: tipo,
       ...(tipo === 'puntos'
         ? { colones_por_punto: Number($('#n-colones-punto').value), premios_puntos: catalogoActual() }
-        : { cashback_porcentaje: porcentajeCashback(), cashback_minimo: minimoCashback() }),
+        : { cashback_porcentaje: porcentajeCashback(), cashback_minimo: minimoCashback(), cashback_texto_franja: textoEnFranja() }),
       puntos_factura_obligatoria: $('#n-factura-obligatoria').checked,
       puntos_tope_compra: entero('#n-tope'),
       puntos_espera_minutos: entero('#n-espera'),
@@ -926,6 +936,7 @@
       tipo: tipoPrograma(),
       metas: tipoPrograma() === 'puntos' ? catalogoActual().map((p) => p.puntos).join(',') : '',
       porcentaje: tipoPrograma() === 'cashback' ? porcentajeCashback() : '',
+      texto: tipoPrograma() === 'cashback' && !textoEnFranja() ? '0' : '',
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });

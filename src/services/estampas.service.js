@@ -195,12 +195,14 @@ async function lineaDeTexto(texto, { color, fuente, ancho, alto }) {
  * @param {string} porcentaje ya formateado ("5 %", "2,5 %")
  * @param {Buffer} [base]     la foto ya recortada y con su efecto (fondoConFoto)
  * @param {string} [efecto]   el de la foto: con «clara» el texto va oscuro
+ * @param {boolean} [texto]   false = solo la foto (o el color), sin nada encima: una portada propia
  */
 async function tiraCashback({
-  porcentaje, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null, efecto = 'nitida',
+  porcentaje, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null, efecto = 'nitida', texto = true,
 }) {
   const [r, g, b] = hexARgb(fondo);
   const lienzo = base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } };
+  if (!texto) return sharp(lienzo).png().toBuffer();
   // Sobre la foto, blanco con sombra (oscuro si la foto está aclarada); sobre el color, el que se distinga.
   const claro = base && efecto === 'clara';
   const color = base ? (claro ? '#1f1f1f' : '#ffffff') : colorQueSeVe([r, g, b], [sello, tarjeta]);

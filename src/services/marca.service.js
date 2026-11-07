@@ -130,7 +130,8 @@ function versionTira(negocio) {
       // Con puntos, la barra depende del catálogo (las marcas de cada premio).
       ...(puntos.esPuntos(negocio) ? [`puntos:${puntos.catalogo(negocio).map((p) => p.puntos).join(',')}`] : []),
       // Con cashback, la franja lleva el porcentaje escrito.
-      ...(cashback.esCashback(negocio) ? [`cashback-foto:${cashback.porcentaje(negocio)}`] : [])].join('|'))
+      ...(cashback.esCashback(negocio)
+        ? [`cashback-foto:${cashback.textoEnFranja(negocio) ? cashback.porcentaje(negocio) : 'sin-texto'}`] : [])].join('|'))
     .digest('hex').slice(0, 10);
 }
 
@@ -190,10 +191,11 @@ async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {})
     });
   }
   // Cashback: no hay nada que llenar. La franja es la foto del negocio (o el color de
-  // fondo) con el porcentaje; es igual para todos los clientes (el saldo va en los campos).
+  // fondo) con el porcentaje, o solo la foto si el negocio diseñó su propia portada.
+  // Es igual para todos los clientes (el saldo va en los campos).
   if (cashback.esCashback(negocio)) {
     return estampas.tiraCashback({
-      porcentaje: cashback.formatoPorcentaje(cashback.porcentaje(negocio)),
+      porcentaje: cashback.formatoPorcentaje(cashback.porcentaje(negocio)), texto: cashback.textoEnFranja(negocio),
       fondo: fondoSellos(negocio), sello: negocio.color_secundario || '#ffffff', tarjeta: negocio.color_primario,
       ancho, alto, base: await fondoDelNegocio(negocio, { ancho, alto }), efecto: negocio.fondo_estampas_efecto,
     });

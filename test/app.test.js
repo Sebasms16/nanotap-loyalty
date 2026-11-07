@@ -208,6 +208,10 @@ test('operador: login y validaciones de alta de negocio', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: Buffer.alloc(0),
   });
   assert.equal(previaCashback.status, 200);
+  const previaPortada = await pedir('/api/operador/vista-previa/estampas?tipo=cashback&texto=0&fondo=000000', {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: Buffer.alloc(0),
+  });
+  assert.equal(previaPortada.status, 200);
 
   // Un token de operador no sirve como staff.
   assert.equal((await pedir('/api/staff/yo', { headers: { Authorization: `Bearer ${token}` } })).status, 401);
