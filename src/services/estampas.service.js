@@ -3,6 +3,7 @@
 // tenue, o como un círculo vacío si el negocio prefiere no revelarla.
 // La imagen se respeta tal cual (sin aro ni recorte en círculo): su forma es la estampa.
 // Se usa como strip de Apple Wallet y como hero image de Google Wallet.
+const path = require('node:path');
 const sharp = require('sharp');
 const { hexARgb, distribuirEstampas } = require('./imagen.service');
 
@@ -170,16 +171,72 @@ async function tiraPuntos({ puntos, metas, fondo, sello = '#ffffff', tarjeta = n
     .toBuffer();
 }
 
-// Franja de una tarjeta de cashback sin saldo mínimo: la imagen del negocio (estampa
-// o logo) al centro, sobre el color o la foto de fondo. El saldo va en los campos.
-async function tiraImagenCentrada({ imagen: img, fondo, ancho = 750, alto = 246, base = null }) {
-  const lado = Math.round(alto * 0.72);
-  const icono = await estampaColor(img, lado);
+// La letra va dentro del proyecto: el servidor no tiene fuentes instaladas.
+const FUENTES = {
+  negrita: { font: 'Poppins Bold', fontfile: path.join(__dirname, '..', 'assets', 'fuentes', 'Poppins-Bold.ttf') },
+  media: { font: 'Poppins Medium', fontfile: path.join(__dirname, '..', 'assets', 'fuentes', 'Poppins-Medium.ttf') },
+};
+const escaparXml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// Una línea de texto (PNG transparente) del tamaño más grande que cabe en ancho × alto.
+async function lineaDeTexto(texto, { color, fuente, ancho, alto }) {
+  const { data, info } = await sharp({
+    text: {
+      text: `<span foreground="${color}">${escaparXml(texto)}</span>`,
+      ...FUENTES[fuente], rgba: true, width: Math.round(ancho), height: Math.round(alto),
+    },
+  }).png().toBuffer({ resolveWithObject: true });
+  return { png: data, ancho: info.width, alto: info.height };
+}
+
+/**
+ * Franja de una tarjeta de cashback: no hay estampas que llenar, así que es la foto
+ * del negocio (o el color de fondo) con el porcentaje encima. El saldo va en los campos.
+ * @param {string} porcentaje ya formateado ("5 %", "2,5 %")
+ * @param {Buffer} [base]     la foto ya recortada y con su efecto (fondoConFoto)
+ * @param {string} [efecto]   el de la foto: con «clara» el texto va oscuro
+ */
+async function tiraCashback({
+  porcentaje, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null, efecto = 'nitida',
+}) {
   const [r, g, b] = hexARgb(fondo);
-  return sharp(base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } })
-    .composite([{ input: icono, left: Math.round((ancho - lado) / 2), top: Math.round((alto - lado) / 2) }])
-    .png()
-    .toBuffer();
+  const lienzo = base || { create: { width: ancho, height: alto, channels: 3, background: { r, g, b } } };
+  // Sobre la foto, blanco con sombra (oscuro si la foto está aclarada); sobre el color, el que se distinga.
+  const claro = base && efecto === 'clara';
+  const color = base ? (claro ? '#1f1f1f' : '#ffffff') : colorQueSeVe([r, g, b], [sello, tarjeta]);
+  const capas = [];
+  if (base) {
+    // Un velo suave detrás del texto para que se lea en cualquier foto.
+    const velo = claro ? '#ffffff' : '#000000';
+    capas.push({
+      input: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${ancho}" height="${alto}">`
+        + `<defs><radialGradient id="v" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="${velo}" stop-opacity="0.5"/>`
+        + `<stop offset="1" stop-color="${velo}" stop-opacity="0"/></radialGradient></defs>`
+        + `<ellipse cx="${ancho / 2}" cy="${alto / 2}" rx="${ancho * 0.48}" ry="${alto * 0.62}" fill="url(#v)"/></svg>`),
+    });
+  }
+  try {
+    // Mismo margen a los lados que las estampas, para que el iPhone no corte el texto.
+    const [arriba, abajo] = await Promise.all([
+      lineaDeTexto(`${porcentaje} de cashback`, { color, fuente: 'negrita', ancho: ancho * 0.7, alto: alto * 0.28 }),
+      lineaDeTexto('en cada compra', { color, fuente: 'media', ancho: ancho * 0.44, alto: alto * 0.14 }),
+    ]);
+    const hueco = Math.round(alto * 0.075);
+    let y = Math.round((alto - arriba.alto - hueco - abajo.alto) / 2);
+    for (const linea of [arriba, abajo]) {
+      const left = Math.round((ancho - linea.ancho) / 2);
+      if (base && !claro) {
+        const sombra = await sharp(linea.png).linear([0, 0, 0, 0.55], [0, 0, 0, 0])
+          .blur(Math.max(1, alto / 90)).png().toBuffer();
+        capas.push({ input: sombra, left, top: y + Math.max(1, Math.round(alto / 120)) });
+      }
+      capas.push({ input: linea.png, left, top: y });
+      y += linea.alto + hueco;
+    }
+  } catch {
+    // Sin texto (no debería pasar): queda la foto o el color, y el % sigue en los campos de la tarjeta.
+  }
+  return sharp(lienzo).composite(capas).png().toBuffer();
 }
 
 // Estilos de la franja de puntos. 'linea' es la barra continua de tiraPuntos.
@@ -419,6 +476,6 @@ async function iconoDesdeLogo(logo, tam, fondo) {
 }
 
 module.exports = {
-  tiraConImagenes, tiraPuntos, tiraPuntosEstilo, tiraImagenCentrada, ESTILOS_PUNTOS, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
+  tiraConImagenes, tiraPuntos, tiraPuntosEstilo, tiraCashback, ESTILOS_PUNTOS, normalizarImagen, normalizarFoto, fondoConFoto, EFECTOS_FONDO, logoEncabezado, logoParaGoogle, logoAnchoParaGoogle, iconoDesdeLogo,
   proporcionLogo, PROPORCION_ANCHO,
 };

@@ -456,17 +456,16 @@
     $('#n-config-puntos').hidden = !conPuntos;
     $('#n-config-cashback').hidden = !conCashback;
     $('#n-config-compras').hidden = tipo === 'estampas'; // factura, tope y espera
-    // Con cashback solo sirve la imagen de la estampa: va al centro de la franja si no hay saldo mínimo.
-    $('#n-bloque-estampas').hidden = conPuntos;
-    $('#n-campo-modo').hidden = conCashback;
-    $('#n-campo-pendientes').hidden = conCashback;
-    if (conCashback) {
-      $('#n-campo-misma').hidden = false;
-      $('#n-campo-final').hidden = true;
-      $('#n-campo-distintas').hidden = true;
-    } else {
-      mostrarModo();
-    }
+    // Puntos y cashback no usan imágenes de estampas. Con cashback la franja es la foto
+    // del negocio con el porcentaje escrito: la foto es lo principal.
+    $('#n-bloque-estampas').hidden = tipo !== 'estampas';
+    $('#n-fondo-titulo').textContent = conCashback ? 'Foto del negocio' : 'Foto de fondo de las estampas';
+    $('#n-fondo-opcional').textContent = conCashback
+      ? '(recomendada; si no, el color de fondo)' : '(opcional; va en lugar del color de fondo)';
+    $('#n-fondo-ayuda-estampas').hidden = conCashback;
+    $('#n-fondo-ayuda-cashback').hidden = !conCashback;
+    $('#n-fondo-sellos-titulo').textContent = conCashback ? 'Fondo de la franja' : 'Fondo de las estampas';
+    if (tipo === 'estampas') mostrarModo();
     $('#n-fila-premio-estampas').hidden = tipo !== 'estampas';
     $('#n-regla-cashback').textContent = `Una compra de ₡12 500 suma ₡${numeroCR(Math.floor((12500 * porcentajeCashback()) / 100 + 1e-9))} de saldo.`;
     const colones = Number($('#n-colones-punto').value) || 1000;
@@ -481,6 +480,7 @@
   }));
   $('#n-colones-punto').addEventListener('input', mostrarTipo);
   $('#n-cashback-porcentaje').addEventListener('input', mostrarTipo);
+  $('#n-cashback-porcentaje').addEventListener('change', actualizarVistaPrevia); // el % va escrito en la franja
   $('#n-cashback-minimo').addEventListener('change', () => { ponerSaldoPrevio(); actualizarVistaPrevia(); });
 
   // Valor inicial del control de la vista previa: 3 estampas, o con puntos el 40 % del
@@ -925,7 +925,7 @@
       efecto: $('#n-fondo-efecto').value,
       tipo: tipoPrograma(),
       metas: tipoPrograma() === 'puntos' ? catalogoActual().map((p) => p.puntos).join(',') : '',
-      minimo: tipoPrograma() === 'cashback' ? minimoCashback() || '' : '',
+      porcentaje: tipoPrograma() === 'cashback' ? porcentajeCashback() : '',
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });

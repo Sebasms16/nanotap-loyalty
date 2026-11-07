@@ -108,19 +108,19 @@ function objetoConPuntos(cliente, negocio, estado, base) {
   };
 }
 
-// Con cashback: el saldo en colones va en el campo grande; la franja es la barra hasta el
-// saldo mínimo (si el negocio lo fija) o la imagen del negocio.
+// Con cashback: el saldo en colones va en el campo grande; la franja es la foto del negocio
+// con el porcentaje, igual para todos (por eso su URL no lleva el saldo).
 function objetoConCashback(cliente, negocio, estado, base) {
   const saldo = cliente.puntos || 0;
   const min = cashback.minimo(negocio);
   const puede = cashback.puedeUsar(negocio, saldo);
   const enColones = { label: 'Saldo', balance: { string: cashback.formatoColones(saldo) } };
-  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?puntos=${saldo}&v=${marca.versionTira(negocio)}`;
+  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?v=${marca.versionTira(negocio)}`;
   return {
     ...base,
     loyaltyPoints: estado ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } } : enColones,
     secondaryLoyaltyPoints: estado ? enColones : { label: 'Cashback', balance: { string: cashback.regla(negocio) } },
-    heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`Saldo de ${cashback.formatoColones(saldo)}`) },
+    heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${cashback.regla(negocio)} de cashback`) },
     textModulesData: [
       puede
         ? { id: 'saldo', header: 'Puede usar su saldo', body: `Tiene ${cashback.formatoColones(saldo)} para pagar parte o el total de una compra.` }

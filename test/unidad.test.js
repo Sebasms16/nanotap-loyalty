@@ -638,10 +638,14 @@ test('programa de cashback: saldo en colones, mínimo para usarlo, tarjetas, reg
   const sinMinimo = await leer(conSaldo, { ...neg, cashback_minimo: null });
   assert.equal(sinMinimo.storeCard.secondaryFields.length, 1); // solo el %: no hay nada que esperar
 
-  // Franja: barra hasta el mínimo; sin mínimo, la imagen (aquí no hay: barra igual). Cambia la versión con el mínimo.
-  const tira = await marca.tiraDelNegocio({ ...neg, color_fondo_sellos: '#000000' }, 800);
+  // Franja: el porcentaje escrito sobre el color (o la foto), igual para cualquier saldo.
+  const negro = { ...neg, color_fondo_sellos: '#000000' };
+  const tira = await marca.tiraDelNegocio(negro, 800);
   assert.deepEqual([(await sharp(tira).metadata()).width, (await sharp(tira).metadata()).height], [750, 246]);
-  assert.notEqual(marca.versionTira({ ...neg, cashback_minimo: 2000 }), marca.versionTira(neg));
+  assert.ok((await sharp(tira).stats()).channels[0].max > 200, 'lleva el texto en claro sobre el fondo negro');
+  assert.ok(tira.equals(await marca.tiraDelNegocio(negro, 0)));
+  assert.notEqual(marca.versionTira({ ...neg, cashback_porcentaje: 10 }), marca.versionTira(neg));
+  assert.doesNotMatch(objeto.heroImage.sourceUri.uri, /puntos=/);
 });
 
 test('niveles con cashback: suben por lo comprado en la temporada, en colones', () => {

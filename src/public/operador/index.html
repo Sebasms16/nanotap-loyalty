@@ -119,8 +119,8 @@
                 <div class="campo">
                   <label for="n-cashback-minimo">Saldo mínimo para usarlo (₡) <span class="opcional">(opcional)</span></label>
                   <input id="n-cashback-minimo" type="number" min="1" placeholder="Sin mínimo">
-                  <p class="ayuda">Hasta llegar a este saldo, el cliente lo acumula pero no lo puede usar. En la tarjeta se ve una
-                    barra que se llena hasta el mínimo; sin mínimo, se ve la imagen de la estampa (o el logo).</p>
+                  <p class="ayuda">Hasta llegar a este saldo, el cliente lo acumula pero no lo puede usar. En la tarjeta se ve
+                    cuánto le falta.</p>
                 </div>
               </div>
             </div>
@@ -223,15 +223,19 @@
                 <input id="n-secundario" type="color" value="#ffffff">
               </div>
               <div class="campo">
-                <label for="n-fondo-sellos">Fondo de las estampas</label>
+                <label for="n-fondo-sellos" id="n-fondo-sellos-titulo">Fondo de las estampas</label>
                 <input id="n-fondo-sellos" type="color" value="#1a1a2e">
                 <label class="casilla"><input id="n-fondo-igual" type="checkbox" checked> Igual a la tarjeta</label>
               </div>
             </div>
 
             <div class="campo">
-              <label for="n-fondo-foto">Foto de fondo de las estampas <span class="opcional">(opcional; va en lugar del color de fondo)</span></label>
-              <p class="ayuda">Una foto <strong>horizontal</strong>, de <strong>1500 × 500 px</strong> o más (JPG o PNG). Se recorta
+              <label for="n-fondo-foto"><span id="n-fondo-titulo">Foto de fondo de las estampas</span>
+                <span class="opcional" id="n-fondo-opcional">(opcional; va en lugar del color de fondo)</span></label>
+              <p class="ayuda" id="n-fondo-ayuda-cashback" hidden>Una foto <strong>horizontal</strong> del local, los productos o
+                el equipo, de <strong>1500 × 500 px</strong> o más (JPG o PNG). Va en la franja de la tarjeta con el porcentaje de
+                cashback escrito encima, en grande. Se recorta buscando la parte más llamativa.</p>
+              <p class="ayuda" id="n-fondo-ayuda-estampas">Una foto <strong>horizontal</strong>, de <strong>1500 × 500 px</strong> o más (JPG o PNG). Se recorta
                 para llenar la franja de las estampas, buscando la parte más llamativa. Elija un efecto para que las estampas
                 se lean bien encima: con una foto con mucho detalle, «Borrosa» u «Oscura» suelen verse mejor.</p>
               <div class="subida">

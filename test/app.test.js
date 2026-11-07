@@ -203,8 +203,8 @@ test('operador: login y validaciones de alta de negocio', async () => {
   const nivelesCompras = await negocioCon({ niveles_activos: true, niveles: [{ clave: 'plata', compras: 90000 }, { clave: 'oro', compras: 80000 }] });
   assert.match((await nivelesCompras.json()).error, /Oro debe pedir más compras/);
   assert.equal((await pedir(`/api/clientes/${cid}/usar-saldo`, json({ monto: 500 }, token))).status, 401);
-  // Vista previa de una tarjeta de cashback con saldo mínimo: la barra.
-  const previaCashback = await pedir('/api/operador/vista-previa/estampas?tipo=cashback&minimo=5000&llenos=2500&fondo=000000', {
+  // Vista previa de una tarjeta de cashback: el porcentaje escrito sobre el color (o la foto).
+  const previaCashback = await pedir('/api/operador/vista-previa/estampas?tipo=cashback&porcentaje=2.5&fondo=000000', {
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: Buffer.alloc(0),
   });
   assert.equal(previaCashback.status, 200);

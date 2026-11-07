@@ -170,8 +170,10 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   `cashback_porcentaje` del monto como saldo en colones (hacia abajo), con la misma función `sumar_puntos` y las
   mismas reglas de compra (factura, tope y espera). El saldo se guarda en `clientes.puntos` y el staff lo descuenta de
   una compra con `usar_cashback` (uso parcial, nunca más de lo que hay). Si el negocio fija `cashback_minimo`, el
-  saldo se puede usar solo desde ese monto; la franja es una barra hasta el mínimo o, sin mínimo, la imagen de la
-  estampa. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
+  saldo se puede usar solo desde ese monto (la tarjeta muestra cuánto falta). La franja es la foto del negocio
+  (`fondo_estampas_url`, con su efecto) o el color de fondo, con «5 % de cashback / en cada compra» escrito encima;
+  es igual para todos los clientes. La letra (Poppins, OFL) va en `src/assets/fuentes/` porque el servidor no tiene
+  fuentes instaladas. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
   `src/db/migraciones/2026-11-04-cashback.sql` (`services/cashback.service.js`).
 - **Suscripciones:** el operador anota para cada negocio el plan (`semestral` o `anual`) y el inicio del período
   pagado; el panel calcula el vencimiento (6 o 12 meses después) y la cuenta regresiva, en rojo con menos de un mes
