@@ -9,6 +9,7 @@ const { reglasDelNegocio } = require('../utils/reglas');
 const niveles = require('./niveles.service');
 const puntos = require('./puntos.service');
 const cashback = require('./cashback.service');
+const correo = require('./correo.service');
 const v = require('../utils/validacion');
 const { HttpError, errorDb } = require('../utils/errores');
 
@@ -104,7 +105,77 @@ async function tarjetaParaCliente(cliente, negocio, existente) {
   };
 }
 
-// RF-02. Si el teléfono ya existe en este negocio, no se duplica: se devuelve su tarjeta.
+// ---------------------------------------------------------------------------
+// Teléfono ya inscrito: la tarjeta NO se muestra en la página, porque cualquiera que
+// sepa el número podría verla y usarla (y con puntos o cashback, gastar el saldo).
+// Se envía un enlace al correo con que el cliente se inscribió; abre la tarjeta 24 horas.
+// ---------------------------------------------------------------------------
+const HORAS_ENLACE = 24;
+const MINUTOS_ENTRE_CORREOS = 2;
+const CORREOS_POR_DIA = 5;
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+async function enviarEnlaceTarjeta(cliente, negocio) {
+  const contexto = { negocio_id: negocio.id, cliente_id: cliente.id, operacion: 'enlace_tarjeta' };
+  const respuesta = (enviado, motivo = null) => ({
+    existente: true,
+    verificacion: { enviado, motivo, correo: enviado ? correo.ocultarCorreo(cliente.correo) : null, horas: HORAS_ENLACE },
+  });
+  if (!env.correo.habilitado) {
+    log.warn('teléfono ya inscrito, pero el envío de correos no está configurado', contexto);
+    return respuesta(false, 'sin_correo');
+  }
+  // Para no llenarle el buzón a nadie: uno cada pocos minutos y unos pocos al día.
+  const { data: recientes, error } = await supabase
+    .from('enlaces_tarjeta').select('creado_en')
+    .eq('cliente_id', cliente.id).gte('creado_en', new Date(Date.now() - 86400000).toISOString());
+  if (error) throw errorDb(error, 'leer enlaces de tarjeta');
+  const ultimo = Math.max(0, ...recientes.map((r) => Date.parse(r.creado_en)));
+  if (Date.now() - ultimo < MINUTOS_ENTRE_CORREOS * 60000 || recientes.length >= CORREOS_POR_DIA) {
+    log.info('ya se envió un enlace hace poco; no se repite', contexto);
+    return respuesta(true);
+  }
+
+  const token = crypto.randomBytes(32).toString('base64url');
+  const { data: fila, error: errorInsert } = await supabase.from('enlaces_tarjeta').insert({
+    cliente_id: cliente.id, token_hash: hashToken(token), expira_en: new Date(Date.now() + HORAS_ENLACE * 3600000).toISOString(),
+  }).select('id').single();
+  if (errorInsert) throw errorDb(errorInsert, 'crear enlace de tarjeta');
+  // En el fragmento (#), que el navegador no envía al servidor: el token no queda en ningún registro.
+  const enlace = `${env.baseUrl}/${negocio.slug}/inscripcion#t=${token}`;
+  const enviado = await correo.enviar({
+    para: cliente.correo, ...correo.correoEnlaceTarjeta({ nombre: cliente.nombre, negocio, enlace, horas: HORAS_ENLACE }),
+  }, contexto);
+  if (!enviado) {
+    // Que no cuente para el límite: el cliente puede reintentar enseguida.
+    await supabase.from('enlaces_tarjeta').delete().eq('id', fila.id);
+    return respuesta(false, 'fallo');
+  }
+  log.info('enlace a la tarjeta enviado por correo', contexto);
+  return respuesta(true);
+}
+
+// La tarjeta que abre el enlace del correo (el mismo contenido que al inscribirse).
+async function tarjetaPorEnlace(slug, token) {
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    throw new HttpError(400, 'Este enlace no es válido. Escriba sus datos de nuevo para recibir otro.');
+  }
+  const negocio = await negocioActivoPorSlug(slug);
+  const { data, error } = await supabase
+    .from('enlaces_tarjeta').select('expira_en, cliente:clientes(*)').eq('token_hash', hashToken(token)).maybeSingle();
+  if (error) throw errorDb(error, 'buscar enlace de tarjeta');
+  if (!data?.cliente || data.cliente.negocio_id !== negocio.id) {
+    throw new HttpError(404, 'Este enlace no es válido. Escriba sus datos de nuevo para recibir otro.');
+  }
+  if (Date.parse(data.expira_en) < Date.now()) {
+    throw new HttpError(410, 'Este enlace ya venció. Escriba sus datos de nuevo para recibir otro.');
+  }
+  log.info('tarjeta abierta desde el enlace del correo', { negocio_id: negocio.id, cliente_id: data.cliente.id, operacion: 'enlace_tarjeta' });
+  return tarjetaParaCliente(data.cliente, negocio, true);
+}
+
+// RF-02. Si el teléfono ya existe en este negocio, no se duplica ni se muestra la tarjeta:
+// se envía el enlace a su correo (enviarEnlaceTarjeta).
 async function inscribir(negocio, cuerpo) {
   if (cuerpo.acepto_terminos !== true) {
     throw new HttpError(400, 'Debe aceptar los términos y el tratamiento de sus datos para continuar.');
@@ -132,8 +203,8 @@ async function inscribir(negocio, cuerpo) {
 
   const previo = await buscarExistente();
   if (previo) {
-    log.info('inscripción con teléfono existente; se reutiliza el cliente', { ...contexto, cliente_id: previo.id });
-    return tarjetaParaCliente(previo, negocio, true);
+    log.info('inscripción con teléfono existente; se envía el enlace al correo', { ...contexto, cliente_id: previo.id });
+    return enviarEnlaceTarjeta(previo, negocio);
   }
 
   for (let intento = 0; intento < 3; intento++) {
@@ -147,7 +218,7 @@ async function inscribir(negocio, cuerpo) {
     // Violación de unicidad: o chocó el código QR (reintentar) o el mismo
     // teléfono se inscribió en paralelo (devolver ese cliente).
     const carrera = await buscarExistente();
-    if (carrera) return tarjetaParaCliente(carrera, negocio, true);
+    if (carrera) return enviarEnlaceTarjeta(carrera, negocio);
   }
   throw new Error('no se pudo generar un código QR único');
 }
@@ -178,5 +249,5 @@ async function eliminarCliente(clienteId) {
 }
 
 module.exports = {
-  negocioActivoPorSlug, negocioPublico, clienteConNegocio, clienteDelStaff, inscribir, eliminarCliente,
+  negocioActivoPorSlug, negocioPublico, clienteConNegocio, clienteDelStaff, inscribir, tarjetaPorEnlace, eliminarCliente,
 };

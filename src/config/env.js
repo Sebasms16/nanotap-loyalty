@@ -65,6 +65,14 @@ const google = {
 };
 google.habilitado = Boolean(google.issuerId && google.serviceAccount);
 
+// Correos (Resend): el enlace a la tarjeta cuando alguien se inscribe con un teléfono que ya
+// tiene una. Sin la llave no se envía nada y la tarjeta tampoco se muestra (ver clientes.service).
+const correo = {
+  resendApiKey: opcional('RESEND_API_KEY'),
+  remitente: opcional('CORREO_REMITENTE', 'Nanotap <tarjetas@nanotap.app>'),
+};
+correo.habilitado = Boolean(correo.resendApiKey);
+
 module.exports = {
   port: Number(opcional('PORT', '3000')),
   baseUrl,
@@ -76,4 +84,5 @@ module.exports = {
   contactoPrivacidad: opcional('CONTACTO_PRIVACIDAD', 'soporte@nanotap.app'),
   apple,
   google,
+  correo,
 };

@@ -663,3 +663,19 @@ test('niveles con cashback: suben por lo comprado en la temporada, en colones', 
   const texto = require('../src/utils/reglas').reglasSugeridas(neg).join('\n');
   assert.match(texto, /🥈 Plata \(al comprar ₡40\s000 en la temporada\): Envío gratis\./);
 });
+
+test('correo con el enlace a la tarjeta: oculta el correo y escapa los datos', () => {
+  const correo = require('../src/services/correo.service');
+  assert.equal(correo.ocultarCorreo('sebastian@gmail.com'), 's•••@gmail.com');
+  assert.equal(correo.ocultarCorreo('sin-arroba'), '');
+  const enlace = 'https://loyalty.test/podosport/inscripcion#t=abc';
+  const { asunto, html, texto } = correo.correoEnlaceTarjeta({
+    nombre: '<b>Ana</b>', negocio: { ...negocio, color_primario: 'red;x', logo_url: 'javascript:alert(1)' }, enlace, horas: 24,
+  });
+  assert.match(asunto, /PodoSport/);
+  assert.ok(html.includes(`href="${enlace}"`));
+  assert.ok(!html.includes('<b>Ana</b>') && html.includes('&lt;b&gt;Ana&lt;/b&gt;'));
+  assert.ok(!html.includes('red;x') && !html.includes('javascript:')); // color inválido y logo que no es https: fuera
+  assert.match(texto, /24 horas/);
+  assert.ok(texto.includes(enlace));
+});

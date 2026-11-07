@@ -257,3 +257,11 @@ test('si la base de datos falla, el error es genérico y en español', async () 
   assert.equal(r.status, 500);
   assert.equal((await r.json()).error, 'Ocurrió un error inesperado. Intente de nuevo.');
 });
+
+test('enlace a la tarjeta: un token mal formado se rechaza sin tocar la base de datos', async () => {
+  for (const cuerpo of [{}, { token: 'corto' }, { token: 'x'.repeat(42) + '!' }, { token: 123 }]) {
+    const r = await pedir('/api/negocios/podosport/tarjeta', json(cuerpo));
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /enlace no es válido/);
+  }
+});

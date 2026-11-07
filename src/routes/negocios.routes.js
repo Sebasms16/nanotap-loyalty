@@ -15,7 +15,7 @@ const reglas = require('../utils/reglas');
 const niveles = require('../services/niveles.service');
 const { HttpError, errorDb } = require('../utils/errores');
 const { requiereOperador, requiereStaffUOperador } = require('../middlewares/auth.middleware');
-const { limiteInscripcion } = require('../middlewares/limites.middleware');
+const { limiteInscripcion, limiteConsulta } = require('../middlewares/limites.middleware');
 
 const router = express.Router();
 
@@ -288,6 +288,12 @@ router.post('/:slug/clientes', limiteInscripcion, async (req, res) => {
   const negocio = await clientes.negocioActivoPorSlug(req.params.slug);
   const tarjeta = await clientes.inscribir(negocio, req.body || {});
   res.status(tarjeta.existente ? 200 : 201).json(tarjeta);
+});
+
+// La tarjeta de un cliente que ya existía, desde el enlace que se le envió al correo.
+// El token va en el cuerpo (no en la URL) para que no quede en los registros.
+router.post('/:slug/tarjeta', limiteConsulta, async (req, res) => {
+  res.json(await clientes.tarjetaPorEnlace(req.params.slug, req.body?.token));
 });
 
 // ---------------------------------------------------------------------------

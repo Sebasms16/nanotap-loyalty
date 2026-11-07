@@ -242,6 +242,18 @@ create table if not exists facturas_puntos (
   primary key (negocio_id, factura)
 );
 
+-- Enlaces que se envían al correo del cliente cuando alguien intenta inscribirse con un
+-- teléfono que ya tiene tarjeta: solo quien abre su correo ve la tarjeta. Se guarda el
+-- hash del token, nunca el token. Valen 24 horas.
+create table if not exists enlaces_tarjeta (
+  id uuid primary key default gen_random_uuid(),
+  cliente_id uuid not null references clientes(id) on delete cascade,
+  token_hash text not null unique,
+  creado_en timestamptz not null default now(),
+  expira_en timestamptz not null
+);
+create index if not exists idx_enlaces_tarjeta_cliente on enlaces_tarjeta(cliente_id, creado_en);
+
 create index if not exists idx_clientes_negocio on clientes(negocio_id);
 create index if not exists idx_sellos_eventos_cliente on sellos_eventos(cliente_id);
 create index if not exists idx_apple_devices_serial on apple_device_registrations(serial_number);
@@ -829,6 +841,7 @@ alter table wallet_passes enable row level security;
 alter table apple_device_registrations enable row level security;
 alter table wallet_sync_pendientes enable row level security;
 alter table facturas_puntos enable row level security;
+alter table enlaces_tarjeta enable row level security;
 
 -- Las funciones no deben poder llamarse vía /rpc con la anon key.
 revoke execute on function sumar_sello(uuid, uuid, uuid) from public;

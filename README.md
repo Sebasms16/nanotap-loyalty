@@ -175,6 +175,12 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   es igual para todos los clientes. La letra (Poppins, OFL) va en `src/assets/fuentes/` porque el servidor no tiene
   fuentes instaladas. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
   `src/db/migraciones/2026-11-04-cashback.sql` (`services/cashback.service.js`).
+- **Tarjeta ya existente (seguridad):** si alguien se inscribe con un teléfono que ya tiene tarjeta en ese negocio, la
+  página NO muestra la tarjeta (quien sepa el número podría usarla). Se envía con Resend (`RESEND_API_KEY`,
+  `CORREO_REMITENTE`) un enlace al correo de la inscripción: `/{slug}/inscripcion#t=TOKEN`, válido 24 horas. El token
+  va en el fragmento y en el cuerpo de `POST /api/negocios/:slug/tarjeta`, nunca en una URL que llegue al servidor; en la
+  BD solo se guarda su hash (`enlaces_tarjeta`). Máximo un correo cada 2 minutos y 5 al día por cliente. Sin
+  `RESEND_API_KEY`, la página pide hablar con el personal. Migración: `src/db/migraciones/2026-11-07-enlaces-tarjeta.sql`.
 - **Suscripciones:** el operador anota para cada negocio el plan (`semestral` o `anual`) y el inicio del período
   pagado; el panel calcula el vencimiento (6 o 12 meses después) y la cuenta regresiva, en rojo con menos de un mes
   (o vencida), amarillo con menos de dos y verde con más. «Renovar» empieza el período siguiente el día del vencimiento.

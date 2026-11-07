@@ -79,6 +79,24 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  // El teléfono ya tenía tarjeta: se le envió el enlace al correo con que se inscribió.
+  function mostrarVerificacion({ enviado, motivo, correo, horas }) {
+    if (motivo === 'fallo') {
+      // No se pudo enviar: el formulario sigue ahí para reintentar.
+      return mensaje($('#error-form'), 'Este teléfono ya tiene una tarjeta, pero no pudimos enviarle el correo para abrirla. Intente de nuevo en unos minutos.');
+    }
+    $('#formulario').hidden = true;
+    $('#verificacion').hidden = false;
+    $('#verificacion-titulo').textContent = enviado ? 'Revise su correo' : 'Este teléfono ya tiene una tarjeta';
+    $('#verificacion-texto').textContent = enviado
+      ? `Ya existe una tarjeta con este número de teléfono. Por seguridad no la mostramos aquí: le enviamos un enlace para abrirla a ${correo}.`
+      : `Por seguridad no podemos mostrarla aquí. Pídale ayuda al personal de ${$('#nombre-negocio').textContent}.`;
+    $('#verificacion-nota').textContent = enviado
+      ? `Si no lo ve en unos minutos, revise la carpeta de correo no deseado o de promociones. El enlace sirve durante ${horas} horas.`
+      : '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   $('#formulario').addEventListener('submit', async (evento) => {
     evento.preventDefault();
     const form = evento.currentTarget;
@@ -111,7 +129,8 @@
           acepto_terminos: true,
         },
       });
-      mostrarTarjeta(r);
+      if (r.verificacion) mostrarVerificacion(r.verificacion);
+      else mostrarTarjeta(r);
     } catch (e) {
       mensaje(error, e.message);
     } finally {
@@ -120,9 +139,21 @@
     }
   });
 
+  // Enlace del correo: /{slug}/inscripcion#t=TOKEN. Se quita de la barra de direcciones
+  // enseguida, para que no quede en el historial ni se comparta por error.
+  const token = new URLSearchParams(location.hash.slice(1)).get('t');
+  if (token) history.replaceState(null, '', location.pathname);
+
   api(`/api/negocios/${encodeURIComponent(slug)}`)
-    .then(({ negocio }) => {
+    .then(async ({ negocio }) => {
       pintarNegocio(negocio);
+      if (token) {
+        try {
+          return mostrarTarjeta(await api(`/api/negocios/${encodeURIComponent(slug)}/tarjeta`, { metodo: 'POST', cuerpo: { token } }));
+        } catch (e) {
+          mensaje($('#error-form'), e.message);
+        }
+      }
       $('#formulario').hidden = false;
     })
     .catch((e) => {

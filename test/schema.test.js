@@ -290,3 +290,15 @@ test('programa de cashback: % de la compra como saldo, mínimo para usarlo, uso 
   assert.deepEqual(usos.rows.map((e) => [e.cantidad, e.monto]), [[-500, 500], [-824, 824]]);
   await assert.rejects(db.query(`update negocios set cashback_porcentaje = 60 where id = $1`, [negocio]), /check/);
 });
+
+test('enlaces a la tarjeta: token único y se borran con el cliente', async () => {
+  const id = (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr) values ($1, 'Eli', '22220003', 'e@example.com', 'CAF-2026-EEEE') returning id`,
+    [negocioA]
+  )).rows[0].id;
+  const enlace = `insert into enlaces_tarjeta (cliente_id, token_hash, expira_en) values ($1, $2, now() + interval '1 day')`;
+  await db.query(enlace, [id, 'hash-1']);
+  await assert.rejects(db.query(enlace, [id, 'hash-1'])); // el mismo token no puede repetirse
+  await db.query('delete from clientes where id = $1', [id]);
+  assert.equal((await db.query('select count(*)::int n from enlaces_tarjeta')).rows[0].n, 0);
+});
