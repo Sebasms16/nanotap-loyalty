@@ -23,7 +23,7 @@ router.get('/consulta', limiteConsulta, async (req, res) => {
   const telefono = v.telefono(req.query.telefono);
   const { data, error } = await supabase
     .from('clientes')
-    .select('id, nombre, sellos_actuales, puntos, premios_canjeados, ultima_actividad')
+    .select('id, nombre, sellos_actuales, puntos, premios_canjeados, ultima_actividad, sorpresa_pendiente')
     .eq('negocio_id', negocio.id)
     .eq('telefono', telefono)
     .maybeSingle();
@@ -42,12 +42,15 @@ router.get('/consulta', limiteConsulta, async (req, res) => {
     tipo_programa: negocio.tipo_programa || 'estampas',
     puntos: puntos.paraMostrar(negocio, data.puntos), // null si el negocio no usa puntos
     cashback: cashback.paraMostrar(negocio, data.puntos), // null si el negocio no usa cashback
+    sorpresa: data.sorpresa_pendiente || null, // premio sorpresa que ganó y todavía no retira
   });
 });
 
 // estado: nivel del cliente (null si el negocio no usa niveles).
-function vistaStaff(c, estado) {
+// sorpresasPendientes: premios sorpresa que ganó y todavía no se le entregan.
+function vistaStaff(c, estado, sorpresasPendientes = []) {
   return {
+    sorpresas: sorpresasPendientes,
     id: c.id,
     nombre: [c.nombre, c.primer_apellido, c.segundo_apellido].filter(Boolean).join(' '),
     codigo_qr: c.codigo_qr,
@@ -78,7 +81,15 @@ function vistaStaff(c, estado) {
 async function clienteParaStaff(idOCodigo, staff) {
   const cliente = await clientes.clienteDelStaff(idOCodigo, staff);
   const estado = await niveles.estadoDelCliente(cliente, cliente.negocio);
-  return { cliente, estado, vista: vistaStaff(cliente, estado) };
+  let pendientes = [];
+  if (cliente.sorpresa_pendiente) { // solo se consulta si tiene alguna
+    const { data, error } = await supabase
+      .from('premios_sorpresa').select('id, premio, estampa, creado_en')
+      .eq('cliente_id', cliente.id).is('entregado_en', null).order('creado_en');
+    if (error) throw errorDb(error, 'leer premios sorpresa');
+    pendientes = data;
+  }
+  return { cliente, estado, vista: vistaStaff(cliente, estado, pendientes) };
 }
 
 // Acepta el id del cliente o el código leído del QR (ej. "POD-2026-D5471AC9").
@@ -90,6 +101,17 @@ router.get('/:id', requiereStaff, async (req, res) => {
 router.post('/:id/sello', requiereStaff, async (req, res) => {
   if (!v.esUuid(req.params.id)) throw new HttpError(404, 'Cliente no encontrado.');
   const r = await sellos.sumarSello(req.params.id, req.staff);
+  res.json({ ...r, cliente: (await clienteParaStaff(req.params.id, req.staff)).vista });
+});
+
+// Entrega de un premio sorpresa pendiente del cliente.
+router.post('/:id/sorpresas/:sorpresa/entregar', requiereStaff, async (req, res) => {
+  if (!v.esUuid(req.params.id) || !v.esUuid(req.params.sorpresa)) throw new HttpError(404, 'No se encontró ese premio sorpresa.');
+  const antes = await clienteParaStaff(req.params.id, req.staff);
+  if (!antes.vista.sorpresas.some((s) => s.id === req.params.sorpresa)) {
+    throw new HttpError(409, 'Ese premio sorpresa ya se entregó o no es de este cliente.');
+  }
+  const r = await sellos.entregarSorpresa(req.params.id, req.staff, req.params.sorpresa);
   res.json({ ...r, cliente: (await clienteParaStaff(req.params.id, req.staff)).vista });
 });
 

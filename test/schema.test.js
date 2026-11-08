@@ -302,3 +302,53 @@ test('enlaces a la tarjeta: token único y se borran con el cliente', async () =
   await db.query('delete from clientes where id = $1', [id]);
   assert.equal((await db.query('select count(*)::int n from enlaces_tarjeta')).rows[0].n, 0);
 });
+
+test('premios sorpresa: al azar, nunca al completar, uno por tarjeta, tope al mes y entrega', async () => {
+  await db.query('select setseed(0.42)'); // el azar de random() se repite igual en cada corrida
+  const n = (await db.query(
+    `insert into negocios (nombre, slug, sellos_para_premio, sorpresas_activas, sorpresas_probabilidad, sorpresas_premios)
+     values ('Sorpresas', 'sorpresas', 5, true, 50, '["Café gratis", "Postre"]') returning id`)).rows[0].id;
+  const nuevo = async (tel) => (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr) values ($1, 'S', $2, 's@example.com', $3) returning id`,
+    [n, tel, `SOR-${tel}`])).rows[0].id;
+  const sello = async (c) => (await db.query('select sumar_sello($1, $2, null) r', [c, n])).rows[0].r;
+  const canje = (c) => db.query('select canjear_premio($1, $2, null)', [c, n]);
+
+  // Varias tarjetas completas: como mucho una sorpresa por tarjeta y nunca en la 5.ª estampa.
+  const c = await nuevo('33330001');
+  let total = 0;
+  for (let tarjeta = 0; tarjeta < 6; tarjeta++) {
+    const enEsta = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await sello(c);
+      if (r.sorpresa) enEsta.push(r.sorpresa);
+    }
+    assert.ok(enEsta.length <= 1, 'máximo una por tarjeta');
+    assert.ok(enEsta.every((s) => s.estampa < 5 && ['Café gratis', 'Postre'].includes(s.premio)));
+    total += enEsta.length;
+    await canje(c);
+  }
+  assert.ok(total >= 1, 'con 50 % salió al menos una');
+  const pendientes = (await db.query(
+    'select id, premio from premios_sorpresa where cliente_id = $1 and entregado_en is null order by creado_en', [c])).rows;
+  assert.equal(pendientes.length, total);
+  assert.equal((await db.query('select sorpresa_pendiente from clientes where id = $1', [c])).rows[0].sorpresa_pendiente,
+    pendientes.at(-1).premio); // la más reciente, para la tarjeta
+
+  // Entrega: otro negocio no puede, y dos veces tampoco.
+  await assert.rejects(db.query('select entregar_sorpresa($1, $2, null)', [pendientes[0].id, negocioB]), /cliente_de_otro_negocio/);
+  await db.query('select entregar_sorpresa($1, $2, null)', [pendientes[0].id, n]);
+  await assert.rejects(db.query('select entregar_sorpresa($1, $2, null)', [pendientes[0].id, n]), /sorpresa_ya_entregada/);
+  for (const p of pendientes.slice(1)) await db.query('select entregar_sorpresa($1, $2, null)', [p.id, n]);
+  assert.equal((await db.query('select sorpresa_pendiente from clientes where id = $1', [c])).rows[0].sorpresa_pendiente, null);
+
+  // Tope del mes: con el tope ya alcanzado no sale ninguna más, aunque la probabilidad sea alta.
+  await db.query('update negocios set sorpresas_tope_mes = $2 where id = $1', [n, total]);
+  const otro = await nuevo('33330002');
+  for (let i = 0; i < 4; i++) assert.equal((await sello(otro)).sorpresa, null);
+
+  // Desactivadas: nunca.
+  await db.query('update negocios set sorpresas_tope_mes = null, sorpresas_activas = false where id = $1', [n]);
+  const tercero = await nuevo('33330003');
+  for (let i = 0; i < 4; i++) assert.equal((await sello(tercero)).sorpresa, null);
+});

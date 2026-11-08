@@ -200,9 +200,13 @@ test('operador: login y validaciones de alta de negocio', async () => {
   assert.equal((await negocioCon({ cashback_porcentaje: 60 })).status, 400);
   assert.equal((await negocioCon({ cashback_porcentaje: 2.55 })).status, 400); // un decimal como máximo
   assert.equal((await negocioCon({ cashback_minimo: 0 })).status, 400);
+  assert.equal((await negocioCon({ sorpresas_probabilidad: 60 })).status, 400);
+  assert.equal((await negocioCon({ sorpresas_premios: ['x'.repeat(61)] })).status, 400);
+  assert.match((await (await negocioCon({ sorpresas_activas: true, sorpresas_premios: [] })).json()).error, /al menos un premio sorpresa/);
   const nivelesCompras = await negocioCon({ niveles_activos: true, niveles: [{ clave: 'plata', compras: 90000 }, { clave: 'oro', compras: 80000 }] });
   assert.match((await nivelesCompras.json()).error, /Oro debe pedir más compras/);
   assert.equal((await pedir(`/api/clientes/${cid}/usar-saldo`, json({ monto: 500 }, token))).status, 401);
+  assert.equal((await pedir(`/api/clientes/${cid}/sorpresas/${cid}/entregar`, json({}, token))).status, 401);
   // Vista previa de una tarjeta de cashback: el porcentaje escrito sobre el color (o la foto).
   const previaCashback = await pedir('/api/operador/vista-previa/estampas?tipo=cashback&porcentaje=2.5&fondo=000000', {
     method: 'POST', headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` }, body: Buffer.alloc(0),

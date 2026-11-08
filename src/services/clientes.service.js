@@ -15,7 +15,8 @@ const { HttpError, errorDb } = require('../utils/errores');
 
 const CAMPOS_PUBLICOS_NEGOCIO = 'id, nombre, slug, logo_url, color_primario, color_secundario, sellos_para_premio, descripcion_premio, reglas, activo, '
   + 'niveles_activos, niveles, temporada_meses, temporada_inicio, inactividad_meses, '
-  + 'tipo_programa, colones_por_punto, premios_puntos, puntos_factura_obligatoria, cashback_porcentaje, cashback_minimo';
+  + 'tipo_programa, colones_por_punto, premios_puntos, puntos_factura_obligatoria, cashback_porcentaje, cashback_minimo, '
+  + 'sorpresas_activas, sorpresas_premios';
 
 async function negocioActivoPorSlug(slug) {
   const { data, error } = await supabase

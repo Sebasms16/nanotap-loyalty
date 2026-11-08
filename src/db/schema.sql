@@ -63,7 +63,14 @@ create table if not exists negocios (
   cashback_porcentaje numeric(4, 1) not null default 5 check (cashback_porcentaje between 0.5 and 50),
   cashback_minimo integer check (cashback_minimo > 0),
   -- La franja de cashback lleva escrito "5 % de cashback"; false = solo la foto (una portada propia).
-  cashback_texto_franja boolean not null default true
+  cashback_texto_franja boolean not null default true,
+  -- Premios sorpresa (solo estampas): cada estampa tiene esta probabilidad (%) de traer uno de
+  -- sorpresas_premios (lista de nombres; uno repetido sale más seguido). Máximo uno por tarjeta
+  -- y, si hay tope, tantos al mes en todo el negocio.
+  sorpresas_activas boolean not null default false,
+  sorpresas_probabilidad numeric(4, 1) not null default 5 check (sorpresas_probabilidad between 0.5 and 50),
+  sorpresas_premios jsonb not null default '[]',
+  sorpresas_tope_mes integer check (sorpresas_tope_mes > 0)
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -112,6 +119,11 @@ alter table negocios add column if not exists cashback_porcentaje numeric(4, 1) 
   check (cashback_porcentaje between 0.5 and 50);
 alter table negocios add column if not exists cashback_minimo integer check (cashback_minimo > 0);
 alter table negocios add column if not exists cashback_texto_franja boolean not null default true;
+alter table negocios add column if not exists sorpresas_activas boolean not null default false;
+alter table negocios add column if not exists sorpresas_probabilidad numeric(4, 1) not null default 5
+  check (sorpresas_probabilidad between 0.5 and 50);
+alter table negocios add column if not exists sorpresas_premios jsonb not null default '[]';
+alter table negocios add column if not exists sorpresas_tope_mes integer check (sorpresas_tope_mes > 0);
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -151,9 +163,11 @@ create table if not exists clientes (
   creado_en timestamptz not null default now(),
   ultima_actividad timestamptz not null default now(), -- último sello o canje (o la inscripción)
   puntos integer not null default 0 check (puntos >= 0), -- saldo, en negocios con programa de puntos
+  sorpresa_pendiente text, -- el premio sorpresa más reciente sin entregar (copia de premios_sorpresa, para las tarjetas)
   unique (negocio_id, telefono)
 );
 alter table clientes add column if not exists puntos integer not null default 0 check (puntos >= 0);
+alter table clientes add column if not exists sorpresa_pendiente text;
 
 -- =========================================================
 -- EVENTOS DE SELLOS Y CANJES (auditoría completa)
@@ -254,6 +268,20 @@ create table if not exists enlaces_tarjeta (
 );
 create index if not exists idx_enlaces_tarjeta_cliente on enlaces_tarjeta(cliente_id, creado_en);
 
+-- Premios sorpresa que salieron al sumar una estampa (sumar_sello) y su entrega.
+create table if not exists premios_sorpresa (
+  id uuid primary key default gen_random_uuid(),
+  negocio_id uuid not null references negocios(id) on delete cascade,
+  cliente_id uuid not null references clientes(id) on delete cascade,
+  premio text not null,
+  estampa integer not null,                 -- en qué estampa salió (ej. la 3 de 10)
+  creado_en timestamptz not null default now(),
+  entregado_en timestamptz,                 -- null = pendiente
+  entregado_por uuid references staff(id) on delete set null
+);
+create index if not exists idx_premios_sorpresa_negocio on premios_sorpresa(negocio_id, creado_en);
+create index if not exists idx_premios_sorpresa_cliente on premios_sorpresa(cliente_id, creado_en);
+
 create index if not exists idx_clientes_negocio on clientes(negocio_id);
 create index if not exists idx_sellos_eventos_cliente on sellos_eventos(cliente_id);
 create index if not exists idx_apple_devices_serial on apple_device_registrations(serial_number);
@@ -274,7 +302,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.ocultar_nombre, n.niveles_activos, n.niveles, n.temporada_meses, n.temporada_inicio,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
        n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
-       n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo, n.cashback_texto_franja
+       n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo, n.cashback_texto_franja,
+       n.sorpresas_activas, n.sorpresas_probabilidad, n.sorpresas_premios, n.sorpresas_tope_mes
 from negocios n;
 
 -- =========================================================
@@ -289,22 +318,22 @@ set search_path = public
 as $$
 declare
   v_negocio_id uuid;
-  v_activo boolean;
-  v_tipo text;
+  v_n negocios%rowtype;
   v_meta integer;
   v_sellos integer;
   v_premios integer;
+  v_desde timestamptz;
+  v_premio text;
+  v_sorpresa_id uuid;
+  v_sorpresa json;
 begin
-  select c.negocio_id, n.activo, n.sellos_para_premio, n.tipo_programa
-    into v_negocio_id, v_activo, v_meta, v_tipo
-    from clientes c join negocios n on n.id = c.negocio_id
-   where c.id = p_cliente_id
-     for update of c;
-
+  select c.negocio_id into v_negocio_id from clientes c where c.id = p_cliente_id for update;
   if not found then raise exception 'cliente_no_encontrado'; end if;
   if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
-  if not v_activo then raise exception 'negocio_inactivo'; end if;
-  if v_tipo <> 'estampas' then raise exception 'programa_de_puntos'; end if; -- puntos o cashback
+  select * into v_n from negocios where id = p_negocio_id;
+  if not v_n.activo then raise exception 'negocio_inactivo'; end if;
+  if v_n.tipo_programa <> 'estampas' then raise exception 'programa_de_puntos'; end if; -- puntos o cashback
+  v_meta := v_n.sellos_para_premio;
 
   update clientes
      set sellos_actuales = sellos_actuales + 1, ultima_actividad = now()
@@ -312,14 +341,73 @@ begin
    returning sellos_actuales, premios_canjeados into v_sellos, v_premios;
 
   insert into sellos_eventos (cliente_id, staff_id, tipo) values (p_cliente_id, p_staff_id, 'sello');
+
+  -- Premio sorpresa: al azar, nunca en la estampa que completa la tarjeta (esa ya trae
+  -- premio), máximo uno por tarjeta (desde el último canje o reinicio) y sin pasar el tope del mes.
+  if v_n.sorpresas_activas and v_sellos < v_meta and jsonb_array_length(v_n.sorpresas_premios) > 0
+     and random() * 100 < v_n.sorpresas_probabilidad then
+    select max(creado_en) into v_desde
+      from sellos_eventos where cliente_id = p_cliente_id and tipo in ('canje', 'reinicio');
+    if not exists (select 1 from premios_sorpresa
+                    where cliente_id = p_cliente_id and creado_en > coalesce(v_desde, '-infinity'::timestamptz)) then
+      -- El tope es de todo el negocio: se bloquea su fila para que dos estampas a la vez no lo pasen.
+      perform 1 from negocios where id = p_negocio_id for update;
+      if v_n.sorpresas_tope_mes is null or (
+           select count(*) from premios_sorpresa
+            where negocio_id = p_negocio_id
+              and creado_en >= date_trunc('month', now() at time zone 'America/Costa_Rica') at time zone 'America/Costa_Rica'
+         ) < v_n.sorpresas_tope_mes then
+        v_premio := v_n.sorpresas_premios ->> floor(random() * jsonb_array_length(v_n.sorpresas_premios))::int;
+        insert into premios_sorpresa (negocio_id, cliente_id, premio, estampa)
+        values (p_negocio_id, p_cliente_id, v_premio, v_sellos)
+        returning id into v_sorpresa_id;
+        update clientes set sorpresa_pendiente = v_premio where id = p_cliente_id;
+        v_sorpresa := json_build_object('id', v_sorpresa_id, 'premio', v_premio, 'estampa', v_sellos);
+      end if;
+    end if;
+  end if;
+
   update wallet_passes set ultima_actualizacion = now() where cliente_id = p_cliente_id;
 
   return json_build_object(
     'sellos_actuales', v_sellos,
     'premios_canjeados', v_premios,
     'sellos_para_premio', v_meta,
-    'premio_disponible', v_sellos >= v_meta
+    'premio_disponible', v_sellos >= v_meta,
+    'sorpresa', v_sorpresa
   );
+end;
+$$;
+
+-- El staff entrega un premio sorpresa pendiente.
+create or replace function entregar_sorpresa(p_sorpresa_id uuid, p_negocio_id uuid, p_staff_id uuid)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_cliente_id uuid;
+  v_s premios_sorpresa%rowtype;
+begin
+  -- Primero el cliente (mismo orden de bloqueo que sumar_sello), después el premio.
+  select cliente_id into v_cliente_id from premios_sorpresa where id = p_sorpresa_id;
+  if not found then raise exception 'sorpresa_no_encontrada'; end if;
+  perform 1 from clientes where id = v_cliente_id for update;
+  select * into v_s from premios_sorpresa where id = p_sorpresa_id for update;
+  if v_s.negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
+  if not (select activo from negocios where id = p_negocio_id) then raise exception 'negocio_inactivo'; end if;
+  if v_s.entregado_en is not null then raise exception 'sorpresa_ya_entregada'; end if;
+
+  update premios_sorpresa set entregado_en = now(), entregado_por = p_staff_id where id = p_sorpresa_id;
+  update clientes
+     set sorpresa_pendiente = (select premio from premios_sorpresa
+                                where cliente_id = v_cliente_id and entregado_en is null
+                                order by creado_en desc limit 1),
+         ultima_actividad = now()
+   where id = v_cliente_id;
+  update wallet_passes set ultima_actualizacion = now() where cliente_id = v_cliente_id;
+
+  return json_build_object('premio', v_s.premio, 'cliente_id', v_cliente_id);
 end;
 $$;
 
@@ -842,6 +930,7 @@ alter table apple_device_registrations enable row level security;
 alter table wallet_sync_pendientes enable row level security;
 alter table facturas_puntos enable row level security;
 alter table enlaces_tarjeta enable row level security;
+alter table premios_sorpresa enable row level security;
 
 -- Las funciones no deben poder llamarse vía /rpc con la anon key.
 revoke execute on function sumar_sello(uuid, uuid, uuid) from public;
@@ -853,6 +942,7 @@ revoke execute on function canjear_puntos(uuid, uuid, uuid, text) from public;
 revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from public;
 revoke execute on function usar_cashback(uuid, uuid, uuid, integer) from public;
 revoke execute on function compras_en_rango(uuid, timestamptz, timestamptz) from public;
+revoke execute on function entregar_sorpresa(uuid, uuid, uuid) from public;
 revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from public;
 revoke execute on function analisis_operador(timestamptz, timestamptz, text) from public;
 
@@ -868,6 +958,7 @@ begin
     revoke execute on function puntos_ganados(uuid, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function usar_cashback(uuid, uuid, uuid, integer) from anon, authenticated;
     revoke execute on function compras_en_rango(uuid, timestamptz, timestamptz) from anon, authenticated;
+    revoke execute on function entregar_sorpresa(uuid, uuid, uuid) from anon, authenticated;
     revoke execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) from anon, authenticated;
     revoke execute on function analisis_operador(timestamptz, timestamptz, text) from anon, authenticated;
   end if;
@@ -881,6 +972,7 @@ begin
     grant execute on function puntos_ganados(uuid, timestamptz, timestamptz) to service_role;
     grant execute on function usar_cashback(uuid, uuid, uuid, integer) to service_role;
     grant execute on function compras_en_rango(uuid, timestamptz, timestamptz) to service_role;
+    grant execute on function entregar_sorpresa(uuid, uuid, uuid) to service_role;
     grant execute on function analisis_negocio(uuid, timestamptz, timestamptz, text, timestamptz, timestamptz) to service_role;
     grant execute on function analisis_operador(timestamptz, timestamptz, text) to service_role;
   end if;

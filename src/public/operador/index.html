@@ -278,6 +278,33 @@
               </div>
             </div>
 
+            <fieldset class="campo" id="n-campo-sorpresas">
+              <legend>Premios sorpresa <span class="opcional">(opcional)</span></legend>
+              <label class="casilla"><input id="n-sorpresas-activas" type="checkbox"> Activar: a clientes al azar, en una estampa al
+                azar, les sale un premio extra</label>
+              <div id="n-sorpresas-config" hidden>
+                <p class="ayuda">Nunca sale en la estampa que completa la tarjeta, y cada cliente gana como máximo uno por tarjeta.
+                  El staff lo ve al sumar la estampa y el cliente recibe un aviso en su teléfono.</p>
+                <div class="campo">
+                  <label for="n-sorpresas-premios">Premios <span class="opcional">(uno por línea)</span></label>
+                  <textarea id="n-sorpresas-premios" rows="4" placeholder="Café gratis&#10;Postre gratis&#10;10 % de descuento"></textarea>
+                  <p class="ayuda">Cada vez sale uno de la lista, al azar. Si quiere que uno salga más seguido, escríbalo dos veces.</p>
+                </div>
+                <div class="fila">
+                  <div class="campo">
+                    <label for="n-sorpresas-probabilidad">Probabilidad por estampa (%)</label>
+                    <input id="n-sorpresas-probabilidad" type="number" min="0.5" max="50" step="0.5" value="5">
+                    <p class="suave" id="n-sorpresas-regla"></p>
+                  </div>
+                  <div class="campo">
+                    <label for="n-sorpresas-tope">Máximo al mes <span class="opcional">(opcional)</span></label>
+                    <input id="n-sorpresas-tope" type="number" min="1" placeholder="Sin máximo">
+                    <p class="ayuda">En todo el negocio. Al llegar al máximo, no salen más hasta el mes siguiente.</p>
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+
             <fieldset class="campo">
               <legend>Niveles por temporada <span class="opcional">(opcional)</span></legend>
               <label class="casilla"><input id="n-niveles-activos" type="checkbox"> Activar niveles: 🥉 Bronce, 🥈 Plata, 🥇 Oro y 💎 Diamante</label>

@@ -400,6 +400,12 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .catalogo { display: grid; gap: 0.5rem; }
 .fila-premio { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.6rem 0.8rem; border: 1px solid var(--borde); border-radius: 12px; }
 .fila-premio.no-alcanza { opacity: 0.6; }
+/* Premios sorpresa pendientes (panel del staff) */
+.sorpresas { margin: 0.75rem 0; }
+.sorpresas .fila-premio { border-color: var(--exito); background: var(--exito-fondo); }
+.sorpresas .fila-premio.nueva { animation: sorpresa 0.6s ease-out 2; }
+@keyframes sorpresa { 50% { transform: scale(1.03); } }
+@media (prefers-reduced-motion: reduce) { .sorpresas .fila-premio.nueva { animation: none; } }
 
 /* Programa de puntos (operador): editor del catálogo */
 .catalogo-editor { display: grid; gap: 0.5rem; margin-bottom: 0.6rem; }

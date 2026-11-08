@@ -29,12 +29,15 @@ const ERRORES_SQL = {
   compra_muy_seguida: [409, 'Este cliente acaba de sumar puntos. Espere unos minutos antes de registrar otra compra.'],
   premio_no_encontrado: [404, 'Ese premio ya no está en el catálogo.'],
   puntos_insuficientes: [409, 'El cliente no tiene suficientes puntos para ese premio.'],
+  sorpresa_no_encontrada: [404, 'No se encontró ese premio sorpresa.'],
+  sorpresa_ya_entregada: [409, 'Ese premio sorpresa ya se entregó.'],
 };
 
-async function ejecutar(funcion, tipo, clienteId, staff, extra = {}) {
+// parametros: lo que identifica sobre qué se actúa (por defecto, el cliente).
+async function ejecutar(funcion, tipo, clienteId, staff, extra = {}, parametros = { p_cliente_id: clienteId }) {
   const contexto = { operacion: tipo, negocio_id: staff.negocio_id, cliente_id: clienteId, staff_id: staff.id };
   const { data, error } = await supabase.rpc(funcion, {
-    p_cliente_id: clienteId,
+    ...parametros,
     p_negocio_id: staff.negocio_id,
     p_staff_id: staff.id,
     ...extra,
@@ -53,6 +56,7 @@ async function ejecutar(funcion, tipo, clienteId, staff, extra = {}) {
     ...contexto,
     ...(data.puntos_actuales !== undefined ? { puntos_actuales: data.puntos_actuales } : { sellos_actuales: data.sellos_actuales }),
   });
+  if (data.sorpresa) log.info('premio sorpresa', { ...contexto, premio: data.sorpresa.premio, estampa: data.sorpresa.estampa });
   setImmediate(() => walletSync.sincronizarCliente(clienteId, { operacion: tipo }));
   return data;
 }
@@ -67,5 +71,8 @@ module.exports = {
   usarCashback: (clienteId, staff, monto) => ejecutar('usar_cashback', 'usar_cashback', clienteId, staff, { p_monto: monto }),
   canjearPuntos: (clienteId, staff, premioId) => ejecutar('canjear_puntos', 'canje_puntos', clienteId, staff, {
     p_premio_id: premioId,
+  }),
+  entregarSorpresa: (clienteId, staff, sorpresaId) => ejecutar('entregar_sorpresa', 'entregar_sorpresa', clienteId, staff, {}, {
+    p_sorpresa_id: sorpresaId,
   }),
 };

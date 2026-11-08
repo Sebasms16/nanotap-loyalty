@@ -679,3 +679,36 @@ test('correo con el enlace a la tarjeta: oculta el correo y escapa los datos', (
   assert.match(texto, /24 horas/);
   assert.ok(texto.includes(enlace));
 });
+
+test('premios sorpresa: lista del operador, reglas y tarjetas de Apple y Google', async () => {
+  const sorpresas = require('../src/services/sorpresas.service');
+  const reglas = require('../src/utils/reglas');
+  assert.deepEqual(sorpresas.paraGuardar('- Café gratis\n\n2) Postre \n'), ['Café gratis', 'Postre']);
+  assert.throws(() => sorpresas.paraGuardar(Array(21).fill('x')), /máximo 20/);
+  assert.throws(() => sorpresas.paraGuardar(['x'.repeat(61)]), /muy largo/);
+  assert.equal(sorpresas.unaDeCada(5), '1 de cada 20 estampas');
+
+  const neg = { ...negocio, sorpresas_activas: true, sorpresas_premios: ['Café gratis'] };
+  assert.ok(sorpresas.activas(neg));
+  assert.ok(!sorpresas.activas({ ...neg, sorpresas_premios: [] }));
+  assert.ok(!sorpresas.activas({ ...neg, tipo_programa: 'puntos' }));
+  assert.match(reglas.reglasSugeridas(neg).join('\n'), /premio sorpresa, al azar/);
+  assert.doesNotMatch(reglas.reglasSugeridas(negocio).join('\n'), /sorpresa/);
+
+  const conSorpresa = { ...cliente, sorpresa_pendiente: 'Café gratis' };
+  const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
+  const leer = async (c, n) => JSON.parse(leerZip(await appleWallet.generarPass({ cliente: c, negocio: n, pass }))['pass.json'].toString('utf8'));
+  const json = await leer(conSorpresa, neg);
+  assert.deepEqual(json.storeCard.auxiliaryFields.map((c) => c.value), ['Café gratis']);
+  const detalle = json.storeCard.backFields.find((c) => c.key === 'sorpresa_detalle');
+  assert.equal(detalle.value, 'Café gratis');
+  assert.match(detalle.changeMessage, /premio sorpresa: %@/);
+  // Sin pendiente: el campo sigue (para que el iPhone vea el cambio), sin aviso.
+  const sin = (await leer(cliente, neg)).storeCard.backFields.find((c) => c.key === 'sorpresa_detalle');
+  assert.equal(sin.value, 'Ninguno por ahora');
+  assert.equal(sin.changeMessage, undefined);
+  assert.ok(!(await leer(cliente, negocio)).storeCard.backFields.some((c) => c.key === 'sorpresa_detalle'));
+
+  const objeto = googleWallet.construirObjeto(conSorpresa, neg);
+  assert.match(objeto.textModulesData[0].body, /^Café gratis\. Pídalo en caja/);
+});

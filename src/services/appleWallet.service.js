@@ -17,6 +17,7 @@ const niveles = require('./niveles.service');
 const inactividad = require('./inactividad.service');
 const puntos = require('./puntos.service');
 const cashback = require('./cashback.service');
+const sorpresas = require('./sorpresas.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
@@ -146,6 +147,10 @@ async function generarPass({ cliente, negocio, pass }) {
         changeMessage: faltan === 0 ? '¡Su premio está listo para canjear!' : 'Le faltan %@ estampas para su premio',
       }
     );
+    // Premio sorpresa pendiente: visible al frente, junto al premio.
+    if (cliente.sorpresa_pendiente) {
+      pkpass.auxiliaryFields.push({ key: 'sorpresa', label: '🎁 PREMIO SORPRESA', value: cliente.sorpresa_pendiente });
+    }
   }
   const catalogo = conPuntos && puntos.catalogo(negocio);
   pkpass.backFields.push(
@@ -154,6 +159,14 @@ async function generarPass({ cliente, negocio, pass }) {
       key: 'catalogo',
       label: 'Premios',
       value: catalogo.map((p) => `• ${p.nombre}: ${puntos.formatoPuntos(p.puntos)} puntos`).join('\n'),
+    }] : []),
+    // El aviso al ganar sale de aquí: el campo existe siempre que el negocio tenga sorpresas,
+    // así el iPhone ve el cambio de valor. Sin changeMessage al entregarlo (no avisa nada).
+    ...(sorpresas.activas(negocio) || cliente.sorpresa_pendiente ? [{
+      key: 'sorpresa_detalle',
+      label: 'Premio sorpresa (pídalo en caja)',
+      value: cliente.sorpresa_pendiente || 'Ninguno por ahora',
+      ...(cliente.sorpresa_pendiente ? { changeMessage: '🎁 ¡Ganó un premio sorpresa: %@! Pídalo en caja.' } : {}),
     }] : []),
     ...(estado ? [{ key: 'nivel_detalle', label: 'Nivel y temporada', value: niveles.resumen(estado) }] : []),
     ...((conPuntos || conCashback) && estado?.premio ? [{ key: 'beneficio', label: 'Beneficio de su nivel', value: estado.premio }] : []),

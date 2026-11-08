@@ -45,6 +45,7 @@
           : `Le falta${faltan === 1 ? '' : 'n'} ${faltan} sello${faltan === 1 ? '' : 's'} para: ${r.descripcion_premio}.`,
           r.premio_disponible ? 'exito' : 'aviso');
       }
+      mensaje($('#sorpresa'), r.sorpresa ? `🎁 ¡Ganó un premio sorpresa! Pídalo en caja: ${r.sorpresa}.` : '', 'exito');
       $('#canjeados').textContent = !r.premios_canjeados ? ''
         : r.cashback ? `Veces que usó su saldo: ${r.premios_canjeados}` : `Premios canjeados: ${r.premios_canjeados}`;
       // Nivel de la temporada (si el negocio usa niveles).

@@ -184,6 +184,10 @@ function construirObjeto(cliente, negocio, estado = null) {
     secondaryLoyaltyPoints: estado ? estampas : { label: 'Premio', balance: { string: premio } },
     heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${sellos} de ${meta} estampas`) },
     textModulesData: [
+      // Premio sorpresa pendiente: lo primero que se ve en el detalle.
+      ...(cliente.sorpresa_pendiente
+        ? [{ id: 'sorpresa', header: '🎁 ¡Ganó un premio sorpresa!', body: `${cliente.sorpresa_pendiente}. Pídalo en caja mostrando esta tarjeta.` }]
+        : []),
       disponible
         ? { id: 'premio', header: '¡Premio disponible!', body: `Muestre esta tarjeta para canjear: ${premio}.` }
         : { id: 'premio', header: 'Faltan', body: `${meta - sellos} estampa${meta - sellos === 1 ? '' : 's'} para su premio: ${premio}.` },

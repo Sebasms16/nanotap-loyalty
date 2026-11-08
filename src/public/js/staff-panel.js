@@ -269,7 +269,43 @@
       boton);
   }
 
-  function pintarSellos() {
+  // --- Premios sorpresa ----------------------------------------------------------
+  // Los que el cliente ganó al azar y faltan por entregar. nuevaId: la que acaba de salir.
+  function pintarSorpresas(nuevaId = null) {
+    const lista = cliente.sorpresas || [];
+    $('#sorpresas').hidden = !lista.length;
+    $('#sorpresas').replaceChildren(...lista.map((s) => filaSorpresa(s, s.id === nuevaId)));
+  }
+
+  function filaSorpresa(sorpresa, nueva) {
+    const boton = el('button', { class: 'boton chico exito', type: 'button' }, 'Entregar');
+    let armado = false;
+    boton.addEventListener('click', async () => {
+      if (!armado) { // dos toques, como el canje
+        armado = true;
+        boton.textContent = 'Confirmar';
+        setTimeout(() => { if (armado) { armado = false; boton.textContent = 'Entregar'; } }, 5000);
+        return;
+      }
+      boton.disabled = true;
+      try {
+        const r = await llamar(`/api/clientes/${cliente.id}/sorpresas/${sorpresa.id}/entregar`, { metodo: 'POST' });
+        cliente = r.cliente;
+        pintarSellos();
+        toast(`Premio sorpresa entregado ✓ (${r.premio})`, 'exito');
+      } catch (e) {
+        toast(e.message, 'error');
+        boton.disabled = false;
+      }
+    });
+    return el('div', { class: `fila-premio${nueva ? ' nueva' : ''}` },
+      el('span', {}, el('strong', {}, `🎁 ${sorpresa.premio}`), el('br'),
+        el('small', { class: 'suave' }, `Premio sorpresa · salió en la estampa ${sorpresa.estampa}`)),
+      boton);
+  }
+
+  function pintarSellos(nuevaSorpresa = null) {
+    pintarSorpresas(nuevaSorpresa);
     if (cliente.puntos) return pintarPuntos();
     if (cliente.cashback) return pintarCashback();
     $('#bloque-puntos').hidden = true;
@@ -311,7 +347,7 @@
     else Object.assign(cliente, {
       sellos_actuales: r.sellos_actuales, premios_canjeados: r.premios_canjeados, sellos_para_premio: r.sellos_para_premio,
     });
-    pintarSellos();
+    pintarSellos(r.sorpresa?.id);
   }
 
   $('#sumar').addEventListener('click', async () => {
@@ -320,7 +356,13 @@
     try {
       const r = await llamar(`/api/clientes/${cliente.id}/sello`, { metodo: 'POST' });
       actualizar(r);
-      toast(r.premio_disponible ? '¡Sello sumado! Premio disponible 🎉' : `Sello sumado ✓ (${r.sellos_actuales}/${r.sellos_para_premio})`, 'exito');
+      if (r.sorpresa) {
+        // Salió un premio sorpresa en esta estampa: que el staff no se lo pierda.
+        toast(`🎁 ¡Premio sorpresa! Entréguele: ${r.sorpresa.premio}`, 'exito');
+        navigator.vibrate?.([120, 60, 120]);
+      } else {
+        toast(r.premio_disponible ? '¡Sello sumado! Premio disponible 🎉' : `Sello sumado ✓ (${r.sellos_actuales}/${r.sellos_para_premio})`, 'exito');
+      }
     } catch (e) {
       toast(e.message, 'error');
     } finally {

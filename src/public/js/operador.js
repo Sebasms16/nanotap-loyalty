@@ -208,6 +208,12 @@
     $('#n-cashback-porcentaje').value = n?.cashback_porcentaje ?? 5;
     $('#n-cashback-minimo').value = n?.cashback_minimo ?? '';
     document.querySelector(`input[name="n-cashback-franja"][value="${n?.cashback_texto_franja === false ? 'foto' : 'texto'}"]`).checked = true;
+    // Premios sorpresa (solo estampas)
+    $('#n-sorpresas-activas').checked = Boolean(n?.sorpresas_activas);
+    $('#n-sorpresas-premios').value = (Array.isArray(n?.sorpresas_premios) ? n.sorpresas_premios : []).join('\n');
+    $('#n-sorpresas-probabilidad').value = n?.sorpresas_probabilidad ?? 5;
+    $('#n-sorpresas-tope').value = n?.sorpresas_tope_mes ?? '';
+    mostrarSorpresas();
     $('#n-colones-punto').value = n?.colones_por_punto || 1000;
     $('#n-catalogo').replaceChildren(...(Array.isArray(n?.premios_puntos) ? n.premios_puntos : []).map(filaCatalogo));
     $('#n-factura-obligatoria').checked = Boolean(n?.puntos_factura_obligatoria);
@@ -473,6 +479,7 @@
     $('#n-fondo-sellos-titulo').textContent = conCashback ? 'Fondo de la franja' : 'Fondo de las estampas';
     if (tipo === 'estampas') mostrarModo();
     $('#n-fila-premio-estampas').hidden = tipo !== 'estampas';
+    $('#n-campo-sorpresas').hidden = tipo !== 'estampas';
     $('#n-regla-cashback').textContent = `Una compra de ₡12 500 suma ₡${numeroCR(Math.floor((12500 * porcentajeCashback()) / 100 + 1e-9))} de saldo.`;
     const colones = Number($('#n-colones-punto').value) || 1000;
     $('#n-regla-puntos').textContent = `1 punto por cada ₡${numeroCR(colones)}: una compra de ₡12 500 suma `
@@ -523,6 +530,28 @@
       puntos_factura_obligatoria: $('#n-factura-obligatoria').checked,
       puntos_tope_compra: entero('#n-tope'),
       puntos_espera_minutos: entero('#n-espera'),
+    };
+  }
+
+  // --- Premios sorpresa (estampas) ----------------------------------------------
+  const premiosSorpresa = () => $('#n-sorpresas-premios').value.split(/\r?\n/).map((p) => p.trim()).filter(Boolean);
+  function mostrarSorpresas() {
+    $('#n-sorpresas-config').hidden = !$('#n-sorpresas-activas').checked;
+    const pct = Number($('#n-sorpresas-probabilidad').value) || 5;
+    $('#n-sorpresas-regla').textContent = `Más o menos 1 de cada ${Math.max(2, Math.round(100 / pct))} estampas.`;
+  }
+  $('#n-sorpresas-activas').addEventListener('change', mostrarSorpresas);
+  $('#n-sorpresas-probabilidad').addEventListener('input', mostrarSorpresas);
+
+  // Con otro programa no se mandan: la configuración queda guardada por si vuelve a estampas.
+  function datosDeSorpresas() {
+    if (tipoPrograma() !== 'estampas') return {};
+    const tope = String($('#n-sorpresas-tope').value).trim();
+    return {
+      sorpresas_activas: $('#n-sorpresas-activas').checked,
+      sorpresas_premios: premiosSorpresa(),
+      sorpresas_probabilidad: Number($('#n-sorpresas-probabilidad').value) || 5,
+      sorpresas_tope_mes: tope === '' ? null : Number(tope),
     };
   }
 
@@ -980,6 +1009,7 @@
       ocultar_nombre: $('#n-ocultar-nombre').checked,
       ...datosDeNiveles(),
       ...datosDePuntos(),
+      ...datosDeSorpresas(),
       inactividad_meses: $('#n-inactividad-activa').checked ? mesesInactividad() : null,
       fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };

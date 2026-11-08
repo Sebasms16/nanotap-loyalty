@@ -175,6 +175,13 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   es igual para todos los clientes. La letra (Poppins, OFL) va en `src/assets/fuentes/` porque el servidor no tiene
   fuentes instaladas. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
   `src/db/migraciones/2026-11-04-cashback.sql` (`services/cashback.service.js`).
+- **Premios sorpresa (estampas):** el operador activa `sorpresas_activas`, escribe la lista `sorpresas_premios` (uno
+  repetido sale más seguido), la probabilidad por estampa `sorpresas_probabilidad` (0,5–50 %) y, opcional, un máximo al
+  mes para todo el negocio (`sorpresas_tope_mes`). `sumar_sello` decide al azar en la base de datos: nunca en la estampa
+  que completa la tarjeta y máximo una por tarjeta (desde el último canje o reinicio). Lo ganado queda en
+  `premios_sorpresa` y en `clientes.sorpresa_pendiente` (para las tarjetas) hasta que el staff lo entrega
+  (`POST /api/clientes/:id/sorpresas/:sorpresa/entregar` → `entregar_sorpresa`). El iPhone avisa con el changeMessage
+  del campo del reverso; Google lo muestra en el detalle. Migración: `src/db/migraciones/2026-11-07-premios-sorpresa.sql`.
 - **Tarjeta ya existente (seguridad):** si alguien se inscribe con un teléfono que ya tiene tarjeta en ese negocio, la
   página NO muestra la tarjeta (quien sepa el número podría usarla). Se envía con Resend (`RESEND_API_KEY`,
   `CORREO_REMITENTE`) un enlace al correo de la inscripción: `/{slug}/inscripcion#t=TOKEN`, válido 24 horas. El token

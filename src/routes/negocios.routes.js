@@ -13,6 +13,7 @@ const v = require('../utils/validacion');
 const { aCsv } = require('../utils/csv');
 const reglas = require('../utils/reglas');
 const niveles = require('../services/niveles.service');
+const sorpresas = require('../services/sorpresas.service');
 const { HttpError, errorDb } = require('../utils/errores');
 const { requiereOperador, requiereStaffUOperador } = require('../middlewares/auth.middleware');
 const { limiteInscripcion, limiteConsulta } = require('../middlewares/limites.middleware');
@@ -144,6 +145,28 @@ function datosNegocio(cuerpo, { parcial }) {
     d.cashback_minimo = enteroONulo(cuerpo.cashback_minimo, 'saldo mínimo para usar el cashback', { min: 1, max: 100000000 });
   }
   if (cuerpo.cashback_texto_franja !== undefined) d.cashback_texto_franja = Boolean(cuerpo.cashback_texto_franja);
+  // Premios sorpresa (estampas): probabilidad por estampa, lista de premios y tope al mes.
+  if (cuerpo.sorpresas_activas !== undefined) d.sorpresas_activas = Boolean(cuerpo.sorpresas_activas);
+  if (cuerpo.sorpresas_probabilidad !== undefined) {
+    const pct = Number(cuerpo.sorpresas_probabilidad);
+    if (!Number.isFinite(pct) || pct < 0.5 || pct > 50 || Math.abs(Math.round(pct * 10) - pct * 10) > 1e-9) {
+      throw new HttpError(400, 'La probabilidad del premio sorpresa debe ser entre 0,5 % y 50 %, con un decimal como máximo.');
+    }
+    d.sorpresas_probabilidad = Math.round(pct * 10) / 10;
+  }
+  if (cuerpo.sorpresas_premios !== undefined) {
+    try {
+      d.sorpresas_premios = sorpresas.paraGuardar(cuerpo.sorpresas_premios);
+    } catch (error) {
+      throw new HttpError(400, error.message);
+    }
+  }
+  if (d.sorpresas_activas && d.sorpresas_premios && !d.sorpresas_premios.length) {
+    throw new HttpError(400, 'Escriba al menos un premio sorpresa, o desactive los premios sorpresa.');
+  }
+  if (cuerpo.sorpresas_tope_mes !== undefined) {
+    d.sorpresas_tope_mes = enteroONulo(cuerpo.sorpresas_tope_mes, 'máximo de premios sorpresa al mes', { min: 1, max: 100000 });
+  }
   if (cuerpo.colones_por_punto !== undefined) {
     d.colones_por_punto = v.entero(cuerpo.colones_por_punto, 'colones por punto', { min: 1, max: 1000000 });
   }
@@ -221,7 +244,8 @@ router.patch('/:id', requiereOperador, async (req, res) => {
     'sellos_para_premio', 'descripcion_premio', 'reglas', 'estampas_pendientes', 'ocultar_nombre',
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto', 'tipo_programa', 'colones_por_punto', 'premios_puntos',
-    'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo', 'cashback_texto_franja'].some((k) => k in datos);
+    'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo', 'cashback_texto_franja',
+    'sorpresas_activas', 'sorpresas_premios'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

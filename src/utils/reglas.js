@@ -5,6 +5,7 @@ const niveles = require('../services/niveles.service');
 const inactividad = require('../services/inactividad.service');
 const puntos = require('../services/puntos.service');
 const cashback = require('../services/cashback.service');
+const sorpresas = require('../services/sorpresas.service');
 
 function reglasDeNiveles(negocio) {
   const lista = niveles.configuracion(negocio);
@@ -68,6 +69,7 @@ function reglasSugeridas(negocio) {
   return [
     `Recibe una estampa por cada compra en ${negocio.nombre}, mostrando esta tarjeta al momento de pagar.`,
     ...(niveles.activos(negocio) ? reglasDeNiveles(negocio) : [`Al completar ${total} estampas recibe: ${negocio.descripcion_premio}.`]),
+    ...(sorpresas.activas(negocio) ? [sorpresas.regla()] : []),
     ...(inactividad.activo(negocio) ? [inactividad.regla(negocio)] : []),
     'El premio no se puede cambiar por dinero en efectivo ni por otro producto.',
     'Las estampas no tienen valor comercial y no se otorgan por compras anteriores.',
