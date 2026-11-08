@@ -358,13 +358,13 @@ test('niveles: temporadas en hora de Costa Rica y nivel según tarjetas canjeada
   assert.equal(nivelCon(5).nivel.clave, 'oro');
   assert.equal(nivelCon(6).nivel.clave, 'diamante'); // diamante sin configurar: 6 por defecto
   assert.equal(nivelCon(6).siguiente, null);
-  assert.equal(niveles.etiqueta(nivelCon(5).nivel), '🥇 ORO');
-  assert.match(niveles.resumen(nivelCon(2)), /🥈 Plata · 2 tarjetas llenas esta temporada · faltan 2 para 🥇 Oro\. La temporada termina el 31 dic 2026\./);
+  assert.equal(niveles.etiqueta(nivelCon(5).nivel), 'ORO');
+  assert.match(niveles.resumen(nivelCon(2)), /Nivel Plata · 2 tarjetas llenas esta temporada · faltan 2 para Oro\. La temporada termina el 31 dic 2026\./);
 
   // Reglas sugeridas explican los niveles y la temporada.
   const reglas = require('../src/utils/reglas');
   const texto = reglas.reglasSugeridas({ ...neg, temporada_meses: 4 }).join('\n');
-  assert.match(texto, /🥈 Plata \(al canjear 2 tarjetas en la temporada\): Café grande/);
+  assert.match(texto, /Nivel Plata \(al canjear 2 tarjetas en la temporada\): Café grande/);
   assert.match(texto, /Cada temporada dura 4 meses/);
 });
 
@@ -374,7 +374,7 @@ test('niveles en las tarjetas: Apple arriba a la derecha y Google en el campo pr
   const estado = niveles.describir(neg, 4, niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, new Date('2026-10-14T15:00:00Z')));
 
   const objeto = googleWallet.construirObjeto({ ...cliente, sellos_actuales: 3 }, neg, estado);
-  assert.deepEqual(objeto.loyaltyPoints, { label: 'Nivel', balance: { string: '🥇 Oro' } });
+  assert.deepEqual(objeto.loyaltyPoints, { label: 'Nivel', balance: { string: 'Oro' } });
   assert.equal(objeto.secondaryLoyaltyPoints.balance.string, '3 / 8');
   assert.match(objeto.textModulesData[0].body, /para su premio: Desayuno\.$/);
   assert.equal(objeto.textModulesData[1].id, 'nivel');
@@ -386,7 +386,7 @@ test('niveles en las tarjetas: Apple arriba a la derecha y Google en el campo pr
     const pass = { serial_number: 's', auth_token: 'a'.repeat(48), ultima_actualizacion: new Date().toISOString() };
     const json = JSON.parse(leerZip(await appleWallet.generarPass({ cliente, negocio: neg, pass }))['pass.json'].toString('utf8'));
     assert.deepEqual(json.storeCard.headerFields[0], {
-      key: 'nivel', label: 'NIVEL', value: '🥇 ORO', textAlignment: 'PKTextAlignmentRight', changeMessage: '¡Subió a nivel %@!',
+      key: 'nivel_actual', label: 'NIVEL', value: 'ORO', textAlignment: 'PKTextAlignmentRight', changeMessage: '¡Subió a nivel %@!',
     });
     assert.equal(json.storeCard.secondaryFields[0].value, 'Desayuno');
     assert.ok(json.storeCard.backFields.some((c) => c.key === 'nivel_detalle'));
@@ -589,7 +589,7 @@ test('niveles con puntos: suben por puntos ganados en la temporada', () => {
   assert.equal(niveles.describir(neg, 500, temporada).nivel.clave, 'plata'); // por defecto: 500
   const oro = niveles.describir(neg, 1200, temporada);
   assert.deepEqual([oro.nivel.clave, oro.premio, oro.faltan], ['oro', '10 % menos', 1800]); // diamante por defecto: 3000
-  assert.match(niveles.resumen(oro), /1\s?200 puntos ganados esta temporada · faltan 1\s?800 para 💎 Diamante/);
+  assert.match(niveles.resumen(oro), /1\s?200 puntos ganados esta temporada · faltan 1\s?800 para Diamante/);
   // El mismo negocio con estampas usa la meta en tarjetas.
   assert.equal(niveles.describir({ ...neg, tipo_programa: 'estampas' }, 4, temporada).nivel.clave, 'oro');
 });
@@ -659,9 +659,9 @@ test('niveles con cashback: suben por lo comprado en la temporada, en colones', 
   assert.equal(niveles.describir(neg, 39999, temporada).nivel.clave, 'bronce');
   const plata = niveles.describir(neg, 82000, temporada);
   assert.deepEqual([plata.nivel.clave, plata.unidad, plata.premio, plata.faltan], ['plata', 'compras', 'Envío gratis', 68000]); // oro: 150 000
-  assert.match(niveles.resumen(plata), /₡82\s000 en compras esta temporada · faltan ₡68\s000 para 🥇 Oro/);
+  assert.match(niveles.resumen(plata), /₡82\s000 en compras esta temporada · faltan ₡68\s000 para Oro/);
   const texto = require('../src/utils/reglas').reglasSugeridas(neg).join('\n');
-  assert.match(texto, /🥈 Plata \(al comprar ₡40\s000 en la temporada\): Envío gratis\./);
+  assert.match(texto, /Nivel Plata \(al comprar ₡40\s000 en la temporada\): Envío gratis\./);
 });
 
 test('correo con el enlace a la tarjeta: oculta el correo y escapa los datos', () => {
@@ -729,4 +729,33 @@ test('estampa sorpresa: la posición donde salió se dibuja con su imagen', asyn
   assert.match(googleWallet.construirObjeto({ ...cliente, sorpresa_estampa: 3 }, urlNeg).heroImage.sourceUri.uri, /&sorpresa=3$/);
   assert.doesNotMatch(googleWallet.construirObjeto({ ...cliente, sorpresa_estampa: 3 }, negocio).heroImage.sourceUri.uri, /sorpresa/);
   assert.notEqual(marca.versionTira(urlNeg), marca.versionTira(negocio));
+});
+
+test('insignias de nivel: una por nivel, en las páginas y dibujada en la franja', async () => {
+  const sharp = require('sharp');
+  const insignias = require('../src/services/insignias.service');
+  const marca = require('../src/services/marca.service');
+  const niveles = require('../src/services/niveles.service');
+  const dibujos = insignias.CLAVES.map((c) => insignias.svg(c));
+  assert.deepEqual(insignias.CLAVES, ['bronce', 'plata', 'oro', 'diamante']);
+  assert.equal(new Set(dibujos).size, 4);
+  assert.ok(dibujos.every((d) => d.startsWith('<svg') && !d.includes('undefined') && !d.includes('NaN')));
+  assert.equal(insignias.svg('platino'), null);
+
+  // En la franja: la esquina superior derecha cambia; sin nivel, la franja queda igual.
+  const neg = { ...negocio, color_fondo_sellos: '#000000' };
+  const sin = await marca.tiraDelNegocio(neg, 2);
+  const con = await marca.tiraDelNegocio(neg, 2, { nivel: 'oro' });
+  const esquina = (png) => sharp(png).extract({ left: 680, top: 20, width: 40, height: 50 }).ensureAlpha().raw().toBuffer();
+  assert.ok(!(await esquina(sin)).equals(await esquina(con)), 'la insignia va en la esquina superior derecha');
+  const abajo = (png) => sharp(png).extract({ left: 0, top: 150, width: 750, height: 96 }).ensureAlpha().raw().toBuffer();
+  assert.ok((await abajo(sin)).equals(await abajo(con)), 'el resto de la franja no cambia');
+  assert.ok(sin.equals(await marca.tiraDelNegocio(neg, 2, { nivel: 'platino' }))); // nivel desconocido: nada
+
+  // Google pide la franja con el nivel del cliente, y el campo del nivel va sin emoji.
+  const conNiveles = { ...negocio, niveles_activos: true, niveles: [{ clave: 'plata', tarjetas: 1 }] };
+  const estado = niveles.describir(conNiveles, 1, niveles.temporadaActual({ temporada_inicio: '2026-10-01' }, new Date('2026-10-14T15:00:00Z')));
+  const objeto = googleWallet.construirObjeto(cliente, conNiveles, estado);
+  assert.match(objeto.heroImage.sourceUri.uri, /&nivel=plata/);
+  assert.equal(objeto.loyaltyPoints.balance.string, 'Plata');
 });

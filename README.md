@@ -175,6 +175,11 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   es igual para todos los clientes. La letra (Poppins, OFL) va en `src/assets/fuentes/` porque el servidor no tiene
   fuentes instaladas. Con niveles, se sube por lo comprado en la temporada (`compras_en_rango`). Migración:
   `src/db/migraciones/2026-11-04-cashback.sql` (`services/cashback.service.js`).
+- **Insignias de nivel:** `services/insignias.service.js` dibuja en SVG una insignia por nivel (gema redonda, gota de
+  plata, lingote de oro y diamante con resplandor). Las páginas las usan desde `/img/insignias/{clave}.svg`; en las
+  tarjetas va dibujada en la esquina superior derecha de la franja (`tiraDelNegocio(..., { nivel })`, `&nivel=` en la
+  imagen de Google), porque el campo del nivel en Apple y Google solo admite texto: ahí va solo el nombre («ORO»).
+  El campo de Apple se llama `nivel_actual` (antes `nivel`, con emoji) para que el cambio no dispare «¡Subió de nivel!».
 - **Premios sorpresa (estampas):** el operador activa `sorpresas_activas`, escribe la lista `sorpresas_premios` (uno
   repetido sale más seguido), la probabilidad por estampa `sorpresas_probabilidad` (0,5–50 %) y, opcional, un máximo al
   mes para todo el negocio (`sorpresas_tope_mes`). `sumar_sello` decide al azar en la base de datos: nunca en la estampa

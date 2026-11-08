@@ -269,3 +269,12 @@ test('enlace a la tarjeta: un token mal formado se rechaza sin tocar la base de 
     assert.match((await r.json()).error, /enlace no es válido/);
   }
 });
+
+test('insignias de nivel para las páginas', async () => {
+  const r = await pedir('/img/insignias/diamante.svg');
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  assert.match(await r.text(), /^<svg/);
+  assert.equal((await pedir('/img/insignias/platino.svg')).status, 404);
+  assert.equal((await pedir('/img/insignias/oro.png')).status, 404);
+});

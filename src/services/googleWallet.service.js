@@ -14,6 +14,9 @@ const cashback = require('./cashback.service');
 const log = require('../utils/logger');
 const { reglasComoTexto } = require('../utils/reglas');
 
+// Parte de la URL de la franja con el nivel del cliente: la insignia va dibujada en ella.
+const conNivel = (estado) => (estado ? `&nivel=${estado.nivel.clave}` : '');
+
 const IDIOMA = 'es-419';
 let api = null;
 
@@ -87,10 +90,10 @@ function objetoConPuntos(cliente, negocio, estado, base) {
   const sig = puntosSvc.proximo(negocio, saldo);
   const catalogo = puntosSvc.catalogo(negocio);
   const enPuntos = { label: 'Puntos', balance: { int: saldo } };
-  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?puntos=${saldo}&v=${marca.versionTira(negocio)}`;
+  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?puntos=${saldo}&v=${marca.versionTira(negocio)}${conNivel(estado)}`;
   return {
     ...base,
-    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } } : enPuntos,
+    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: estado.nivel.nombre } } : enPuntos,
     secondaryLoyaltyPoints: estado ? enPuntos : { label: 'Próximo premio', balance: { string: sig ? sig.premio.nombre : '—' } },
     heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${saldo} puntos`) },
     textModulesData: [
@@ -115,10 +118,10 @@ function objetoConCashback(cliente, negocio, estado, base) {
   const min = cashback.minimo(negocio);
   const puede = cashback.puedeUsar(negocio, saldo);
   const enColones = { label: 'Saldo', balance: { string: cashback.formatoColones(saldo) } };
-  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?v=${marca.versionTira(negocio)}`;
+  const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png?v=${marca.versionTira(negocio)}${conNivel(estado)}`;
   return {
     ...base,
-    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } } : enColones,
+    loyaltyPoints: estado ? { label: 'Nivel', balance: { string: estado.nivel.nombre } } : enColones,
     secondaryLoyaltyPoints: estado ? enColones : { label: 'Cashback', balance: { string: cashback.regla(negocio) } },
     heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${cashback.regla(negocio)} de cashback`) },
     textModulesData: [
@@ -170,7 +173,8 @@ function construirObjeto(cliente, negocio, estado = null) {
   const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png`
     + `?llenos=${Math.min(sellos, meta)}&v=${marca.versionTira(negocio)}`
     // La estampa en la que ganó un premio sorpresa, si el negocio tiene imagen para ella.
-    + (cliente.sorpresa_estampa && negocio.sorpresa_estampa_url ? `&sorpresa=${cliente.sorpresa_estampa}` : '');
+    + (cliente.sorpresa_estampa && negocio.sorpresa_estampa_url ? `&sorpresa=${cliente.sorpresa_estampa}` : '')
+    + conNivel(estado);
 
   return {
     id: idObjeto(cliente.id),
@@ -181,7 +185,7 @@ function construirObjeto(cliente, negocio, estado = null) {
     barcode: { type: 'QR_CODE', value: cliente.codigo_qr, alternateText: cliente.codigo_qr },
     // Con niveles, el nivel va en el campo principal y las estampas en el secundario.
     loyaltyPoints: estado
-      ? { label: 'Nivel', balance: { string: `${estado.nivel.emoji} ${estado.nivel.nombre}` } }
+      ? { label: 'Nivel', balance: { string: estado.nivel.nombre } }
       : estampas,
     secondaryLoyaltyPoints: estado ? estampas : { label: 'Premio', balance: { string: premio } },
     heroImage: { sourceUri: { uri: tira }, contentDescription: texto(`${sellos} de ${meta} estampas`) },

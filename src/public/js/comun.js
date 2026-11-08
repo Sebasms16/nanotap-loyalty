@@ -101,5 +101,10 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  window.NT = { $, api, el, toast, mensaje, aplicarMarca, circulosSellos, slugDeRuta, almacen, descargar };
+  // Insignia del nivel (bronce, plata, oro, diamante) para poner junto a su nombre.
+  const insigniaNivel = (clave, tam = 24) => el('img', {
+    class: 'insignia-nivel', src: `/img/insignias/${clave}.svg`, alt: '', width: tam, height: tam,
+  });
+
+  window.NT = { $, api, el, toast, mensaje, aplicarMarca, circulosSellos, slugDeRuta, almacen, descargar, insigniaNivel };
 })();

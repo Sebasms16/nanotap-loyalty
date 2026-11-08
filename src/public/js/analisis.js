@@ -200,7 +200,7 @@
       progreso.length ? barras(progreso, ['cliente', 'clientes']) : vacio('Todavía no hay clientes inscritos.'))];
     if (d.niveles) {
       bloques.push(tarjeta('Niveles de esta temporada', `La temporada termina el ${d.niveles.fin}.`,
-        barras(d.niveles.niveles.map((n) => ({ etiqueta: `${n.emoji} ${n.nombre}`, valor: n.clientes })), ['cliente', 'clientes'])));
+        barras(d.niveles.niveles.map((n) => ({ etiqueta: n.nombre, valor: n.clientes })), ['cliente', 'clientes'])));
     }
     partes.push(dosColumnas(...bloques));
 

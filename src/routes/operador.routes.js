@@ -8,6 +8,7 @@ const marca = require('../services/marca.service');
 const analisis = require('../services/analisis.service');
 const niveles = require('../services/niveles.service');
 const estampas = require('../services/estampas.service');
+const insignias = require('../services/insignias.service');
 const { reglasDelNegocio } = require('../utils/reglas');
 const log = require('../utils/logger');
 const v = require('../utils/validacion');
@@ -149,7 +150,9 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
   const llenos = negocio.tipo_programa !== 'estampas' ? Math.min(pedido, 100000000) : Math.min(total, pedido);
   // ?sorpresa=N: muestra la estampa N con la imagen de la estampa sorpresa.
   const sorpresa = Number.parseInt(req.query.sorpresa, 10) || null;
-  const png = await marca.tiraDelNegocio(negocio, llenos, { sorpresa });
+  // ?nivel=bronce: con niveles activos, la insignia en la esquina.
+  const nivel = insignias.CLAVES.includes(req.query.nivel) ? req.query.nivel : null;
+  const png = await marca.tiraDelNegocio(negocio, llenos, { sorpresa, nivel });
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(png);
 });
 

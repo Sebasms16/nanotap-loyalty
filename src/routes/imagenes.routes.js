@@ -5,6 +5,7 @@ const QRCode = require('qrcode');
 const imagen = require('../services/imagen.service');
 const estampas = require('../services/estampas.service');
 const marca = require('../services/marca.service');
+const insignias = require('../services/insignias.service');
 const supabase = require('../db/supabaseClient');
 const { esUuid } = require('../utils/validacion');
 const { errorDb } = require('../utils/errores');
@@ -66,7 +67,9 @@ router.get('/negocios/:id/estampas.png', async (req, res) => {
     : entre(req.query.llenos, 0, negocio.sellos_para_premio, 0);
   // ?sorpresa=N: la estampa en la que el cliente ganó un premio sorpresa (se dibuja con su imagen).
   const sorpresa = req.query.sorpresa ? entre(req.query.sorpresa, 1, 30, 0) || null : null;
-  enviarPng(res, await marca.tiraDelNegocio(negocio, llenos, { sorpresa }));
+  // ?nivel=oro: la insignia del nivel del cliente, en la esquina.
+  const nivel = insignias.CLAVES.includes(req.query.nivel) ? req.query.nivel : null;
+  enviarPng(res, await marca.tiraDelNegocio(negocio, llenos, { sorpresa, nivel }));
 });
 
 // Logo para Google Wallet, con margen para que no se corte en el círculo.
@@ -92,6 +95,14 @@ let qrEjemplo = null;
 router.get('/qr-ejemplo.png', async (req, res) => {
   qrEjemplo ??= await QRCode.toBuffer('NAN-2026-EJEMPLO', { margin: 1, width: 240 });
   enviarPng(res, qrEjemplo);
+});
+
+// Insignias de nivel para las páginas: /img/insignias/oro.svg
+router.get('/insignias/:archivo', (req, res) => {
+  const [, clave] = /^([a-z]+)\.svg$/.exec(req.params.archivo) || [];
+  const dibujo = insignias.svg(clave);
+  if (!dibujo) return res.sendStatus(404);
+  res.set({ 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=604800' }).send(dibujo);
 });
 
 router.get('/icono.png', (req, res) => {

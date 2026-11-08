@@ -9,6 +9,7 @@ const estampas = require('./estampas.service');
 const imagen = require('./imagen.service');
 const puntos = require('./puntos.service');
 const cashback = require('./cashback.service');
+const insignias = require('./insignias.service');
 const log = require('../utils/logger');
 const { errorDb } = require('../utils/errores');
 
@@ -185,7 +186,13 @@ async function fondoDelNegocio(negocio, { ancho, alto }) {
 // Con foto de fondo, las estampas van sobre la foto en vez del color.
 // sorpresa: la estampa (1 = la primera) en la que el cliente ganó un premio sorpresa en
 // esta tarjeta; se dibuja con la imagen de la estampa sorpresa, si el negocio subió una.
-async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246, sorpresa = null } = {}) {
+// nivel: la clave del nivel del cliente (bronce, plata, oro, diamante); su insignia va en la esquina.
+async function tiraDelNegocio(negocio, llenos, { nivel = null, ...opciones } = {}) {
+  const tira = await dibujarTira(negocio, llenos, opciones);
+  return nivel ? insignias.enFranja(tira, nivel) : tira;
+}
+
+async function dibujarTira(negocio, llenos, { ancho = 750, alto = 246, sorpresa = null } = {}) {
   // Programa de puntos: `llenos` es el saldo y la franja es una barra de avance.
   if (puntos.esPuntos(negocio)) {
     const base = await fondoDelNegocio(negocio, { ancho, alto });

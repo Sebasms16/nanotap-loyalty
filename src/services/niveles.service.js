@@ -11,11 +11,13 @@
 const supabase = require('../db/supabaseClient');
 const { errorDb } = require('../utils/errores');
 
+// Cada nivel tiene su insignia (insignias.service): en las páginas y dibujada en la franja.
+// En los textos (campos de la tarjeta, reglas) va solo el nombre.
 const NIVELES = [
-  { clave: 'bronce', nombre: 'Bronce', emoji: '🥉' },
-  { clave: 'plata', nombre: 'Plata', emoji: '🥈' },
-  { clave: 'oro', nombre: 'Oro', emoji: '🥇' },
-  { clave: 'diamante', nombre: 'Diamante', emoji: '💎' },
+  { clave: 'bronce', nombre: 'Bronce' },
+  { clave: 'plata', nombre: 'Plata' },
+  { clave: 'oro', nombre: 'Oro' },
+  { clave: 'diamante', nombre: 'Diamante' },
 ];
 // Tarjetas canjeadas en la temporada para llegar a cada nivel (si el negocio no elige).
 const TARJETAS_POR_DEFECTO = { bronce: 0, plata: 2, oro: 4, diamante: 6 };
@@ -137,14 +139,14 @@ async function estadoDelCliente(cliente, negocio, ahora = new Date()) {
   return describir(negocio, count || 0, temporada);
 }
 
-const etiqueta = (nivel) => `${nivel.emoji} ${nivel.nombre.toUpperCase()}`;
+const etiqueta = (nivel) => nivel.nombre.toUpperCase();
 
 // Premio que recibe el cliente al canjear: el de su nivel, o el general sin niveles.
 const premioActual = (negocio, estado) => (estado ? estado.premio : negocio.descripcion_premio);
 
-// Texto corto para mostrar: "🥇 Oro · 5 tarjetas esta temporada · faltan 1 para 💎 Diamante".
-// Con puntos: "🥈 Plata · 820 puntos ganados esta temporada · faltan 680 para 🥇 Oro".
-// Con cashback: "🥈 Plata · ₡82 000 en compras esta temporada · faltan ₡68 000 para 🥇 Oro".
+// Texto corto para mostrar: "Nivel Oro · 5 tarjetas esta temporada · faltan 1 para Diamante".
+// Con puntos: "Nivel Plata · 820 puntos ganados esta temporada · faltan 680 para Oro".
+// Con cashback: "Nivel Plata · ₡82 000 en compras esta temporada · faltan ₡68 000 para Oro".
 const numeroCR = (n) => new Intl.NumberFormat('es-CR').format(n);
 function resumen(estado) {
   const n = estado.tarjetas;
@@ -152,11 +154,11 @@ function resumen(estado) {
     puntos: () => `${numeroCR(n)} punto${n === 1 ? '' : 's'} ganado${n === 1 ? '' : 's'} esta temporada`,
     compras: () => `₡${numeroCR(n)} en compras esta temporada`,
   }[estado.unidad]?.() || `${n} tarjeta${n === 1 ? '' : 's'} llena${n === 1 ? '' : 's'} esta temporada`;
-  const partes = [`${estado.nivel.emoji} ${estado.nivel.nombre}`, avance];
+  const partes = [`Nivel ${estado.nivel.nombre}`, avance];
   if (estado.siguiente) {
     const faltan = estado.unidad === 'compras' ? `faltan ₡${numeroCR(estado.faltan)}`
       : estado.faltan === 1 ? 'falta 1' : `faltan ${numeroCR(estado.faltan)}`;
-    partes.push(`${faltan} para ${estado.siguiente.emoji} ${estado.siguiente.nombre}`);
+    partes.push(`${faltan} para ${estado.siguiente.nombre}`);
   }
   return `${partes.join(' · ')}. La temporada termina el ${estado.fin}.`;
 }
@@ -165,8 +167,8 @@ function resumen(estado) {
 function paraMostrar(estado) {
   if (!estado) return null;
   return {
-    nivel: { clave: estado.nivel.clave, nombre: estado.nivel.nombre, emoji: estado.nivel.emoji },
-    siguiente: estado.siguiente && { nombre: estado.siguiente.nombre, emoji: estado.siguiente.emoji },
+    nivel: { clave: estado.nivel.clave, nombre: estado.nivel.nombre },
+    siguiente: estado.siguiente && { clave: estado.siguiente.clave, nombre: estado.siguiente.nombre },
     tarjetas: estado.tarjetas,
     unidad: estado.unidad,
     faltan: estado.faltan,

@@ -1,6 +1,6 @@
 // RF-01, RF-08, RF-09 y Ley 8968: panel del operador.
 (function () {
-  const { $, api, el, mensaje, toast, almacen, descargar } = window.NT;
+  const { $, api, el, mensaje, toast, almacen, descargar, insigniaNivel } = window.NT;
   let token = almacen.leer('nt_operador_token');
   let negocios = [];
   let baseUrl = location.origin;
@@ -313,10 +313,10 @@
   // --- Niveles por temporada -----------------------------------------------------
   // Mismos niveles y valores por defecto que el servidor (services/niveles.service.js).
   const NIVELES = [
-    { clave: 'bronce', nombre: 'Bronce', emoji: '🥉', tarjetas: 0, puntos: 0, compras: 0 },
-    { clave: 'plata', nombre: 'Plata', emoji: '🥈', tarjetas: 2, puntos: 500, compras: 50000 },
-    { clave: 'oro', nombre: 'Oro', emoji: '🥇', tarjetas: 4, puntos: 1500, compras: 150000 },
-    { clave: 'diamante', nombre: 'Diamante', emoji: '💎', tarjetas: 6, puntos: 3000, compras: 300000 },
+    { clave: 'bronce', nombre: 'Bronce', tarjetas: 0, puntos: 0, compras: 0 },
+    { clave: 'plata', nombre: 'Plata', tarjetas: 2, puntos: 500, compras: 50000 },
+    { clave: 'oro', nombre: 'Oro', tarjetas: 4, puntos: 1500, compras: 150000 },
+    { clave: 'diamante', nombre: 'Diamante', tarjetas: 6, puntos: 3000, compras: 300000 },
   ];
   for (let meses = 1; meses <= 12; meses++) {
     $('#n-temporada-meses').append(el('option', { value: meses }, `${meses} ${meses === 1 ? 'mes' : 'meses'}`));
@@ -340,7 +340,7 @@
     const filas = NIVELES.map((nivel) => {
       const propio = propios.find((p) => p?.clave === nivel.clave) || {};
       return el('div', { class: 'fila-nivel' },
-        el('span', { class: 'nombre-nivel' }, `${nivel.emoji} ${nivel.nombre}`),
+        el('span', { class: 'nombre-nivel' }, insigniaNivel(nivel.clave, 26), nivel.nombre),
         nivel.clave === 'bronce'
           ? el('span', { class: 'desde-inscripcion' }, 'Desde la inscripción')
           : el('input', {
@@ -817,9 +817,9 @@
       n.textContent = conNiveles ? premioDeNivel('bronce') : premio;
     });
     document.querySelector('.vista-tarjeta [data-etiqueta-contador]').textContent = conNiveles ? 'NIVEL' : 'ESTAMPAS';
-    document.querySelector('.vista-tarjeta [data-contador]').textContent = conNiveles ? '🥉 BRONCE' : `${llenos}/${total}`;
+    document.querySelector('.vista-tarjeta [data-contador]').textContent = conNiveles ? 'BRONCE' : `${llenos}/${total}`;
     document.querySelector('.vista-tarjeta [data-etiqueta-contador-largo]').textContent = conNiveles ? 'Nivel' : 'Estampas';
-    document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = conNiveles ? '🥉 Bronce' : `${llenos} / ${total}`;
+    document.querySelector('.vista-tarjeta [data-contador-largo]').textContent = conNiveles ? 'Bronce' : `${llenos} / ${total}`;
     document.querySelector('.vista-tarjeta [data-faltan]').textContent = faltan === 0 ? '¡Listo!' : String(faltan);
     document.querySelector('.vista-tarjeta [data-etiqueta-premio]').textContent = 'PREMIO';
     document.querySelector('.vista-tarjeta [data-etiqueta-premio-largo]').textContent = 'Premio';
@@ -981,6 +981,7 @@
       porcentaje: tipoPrograma() === 'cashback' ? porcentajeCashback() : '',
       texto: tipoPrograma() === 'cashback' && !textoEnFranja() ? '0' : '',
       sorpresa: posicionSorpresaPrevia(llenos),
+      nivel: nivelesActivos() ? 'bronce' : '', // la insignia del nivel inicial, como en la tarjeta
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });

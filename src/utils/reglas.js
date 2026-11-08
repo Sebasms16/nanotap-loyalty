@@ -16,7 +16,7 @@ function reglasDeNiveles(negocio) {
       'Según los puntos que gane en la temporada, sube de nivel:',
       ...lista.map((n) => {
         const desde = n.tarjetas === 0 ? 'desde la inscripción' : `al ganar ${puntos.formatoPuntos(n.tarjetas)} puntos en la temporada`;
-        return `${n.emoji} ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
+        return `Nivel ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
       }),
       `${duracion}; los puntos que tenga se conservan.`,
     ];
@@ -26,7 +26,7 @@ function reglasDeNiveles(negocio) {
       'Según lo que compre en la temporada, sube de nivel:',
       ...lista.map((n) => {
         const desde = n.tarjetas === 0 ? 'desde la inscripción' : `al comprar ${puntos.formatoColones(n.tarjetas)} en la temporada`;
-        return `${n.emoji} ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
+        return `Nivel ${n.nombre} (${desde})${n.premio ? `: ${n.premio}` : ''}.`;
       }),
       `${duracion}; el saldo que tenga se conserva.`,
     ];
@@ -34,8 +34,8 @@ function reglasDeNiveles(negocio) {
   return [
     `Al completar ${negocio.sellos_para_premio} estampas recibe el premio de su nivel:`,
     ...lista.map((n) => (n.tarjetas === 0
-      ? `${n.emoji} ${n.nombre} (desde la inscripción): ${n.premio}.`
-      : `${n.emoji} ${n.nombre} (al canjear ${n.tarjetas} tarjetas en la temporada): ${n.premio}.`)),
+      ? `Nivel ${n.nombre} (desde la inscripción): ${n.premio}.`
+      : `Nivel ${n.nombre} (al canjear ${n.tarjetas} tarjetas en la temporada): ${n.premio}.`)),
     `${duracion}; las estampas que lleve se conservan.`,
   ];
 }

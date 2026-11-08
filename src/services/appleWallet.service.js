@@ -49,7 +49,7 @@ async function generarPass({ cliente, negocio, pass }) {
   // Con puntos o cashback, la franja depende del saldo; con estampas, de las estampas.
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
     marca.tiraDelNegocio(negocio, conPuntos || conCashback ? saldo : sellos, {
-      ancho: 375 * escala, alto: 123 * escala, sorpresa: cliente.sorpresa_estampa,
+      ancho: 375 * escala, alto: 123 * escala, sorpresa: cliente.sorpresa_estampa, nivel: estado?.nivel.clave,
     })));
   const archivos = {
     'strip.png': tiras[0],
@@ -95,7 +95,8 @@ async function generarPass({ cliente, negocio, pass }) {
   // Arriba a la derecha: el nivel si el negocio usa niveles; si no, el contador.
   // changeMessage solo al subir: volver a Bronce al cambiar de temporada no avisa.
   const campoNivel = estado && {
-    key: 'nivel',
+    // Clave nueva (antes 'nivel', con emoji): así el cambio de "🥇 ORO" a "ORO" no avisa "¡Subió a nivel!".
+    key: 'nivel_actual',
     label: 'NIVEL',
     value: niveles.etiqueta(estado.nivel),
     textAlignment: 'PKTextAlignmentRight',

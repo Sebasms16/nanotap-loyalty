@@ -1,6 +1,6 @@
 // RF-05 / RF-06: escanear QR → ver cliente → sumar sello o canjear premio.
 (function () {
-  const { $, api, mensaje, toast, aplicarMarca, circulosSellos, almacen, descargar, el } = window.NT;
+  const { $, api, mensaje, toast, aplicarMarca, circulosSellos, almacen, descargar, el, insigniaNivel } = window.NT;
   const token = almacen.leer('nt_staff_token');
   if (!token) return location.replace('/staff/login');
 
@@ -95,10 +95,10 @@
       : `${numero(nivel.faltan)} ${nivel.unidad === 'puntos'
         ? (nivel.faltan === 1 ? 'punto' : 'puntos') : (nivel.faltan === 1 ? 'tarjeta' : 'tarjetas')}`;
     $('#nivel').replaceChildren(
-      el('strong', {}, `${nivel.nivel.emoji} Nivel ${nivel.nivel.nombre}`),
+      el('strong', {}, insigniaNivel(nivel.nivel.clave, 30), `Nivel ${nivel.nivel.nombre}`),
       el('br'),
       el('small', {}, nivel.siguiente
-        ? `${nivel.faltan === 1 ? 'Falta' : 'Faltan'} ${cuanto} para ${nivel.siguiente.emoji} ${nivel.siguiente.nombre} · temporada hasta el ${nivel.fin}`
+        ? `${nivel.faltan === 1 ? 'Falta' : 'Faltan'} ${cuanto} para ${nivel.siguiente.nombre} · temporada hasta el ${nivel.fin}`
         : `Nivel máximo · temporada hasta el ${nivel.fin}`),
       ...(nivel.unidad !== 'tarjetas' && nivel.premio ? [el('br'), el('small', {}, `Beneficio: ${nivel.premio}`)] : []));
   }
@@ -225,7 +225,7 @@
       $('#monto').value = '';
       $('#factura').value = '';
       const nivel = r.subio_de_nivel && r.cliente?.nivel?.nivel;
-      const subio = nivel ? ` · ¡Subió a ${nivel.emoji} ${nivel.nombre}!` : '';
+      const subio = nivel ? ` · ¡Subió a nivel ${nivel.nombre}!` : '';
       if (cliente.cashback) {
         pintarCashback();
         toast(`+${colones(r.puntos_sumados)} de cashback ✓ (saldo ${colones(r.puntos_actuales)})${subio}`, 'exito');
@@ -389,7 +389,7 @@
       const r = await llamar(`/api/clientes/${cliente.id}/canje`, { metodo: 'POST' });
       actualizar(r);
       const nivel = r.subio_de_nivel && r.cliente?.nivel?.nivel;
-      toast(nivel ? `Premio canjeado ✓ ¡Subió a ${nivel.emoji} ${nivel.nombre}!` : 'Premio canjeado ✓', 'exito');
+      toast(nivel ? `Premio canjeado ✓ ¡Subió a nivel ${nivel.nombre}!` : 'Premio canjeado ✓', 'exito');
     } catch (e) {
       toast(e.message, 'error');
       reiniciarCanje();

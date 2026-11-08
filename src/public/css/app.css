@@ -177,6 +177,9 @@ input[type="color"] { width: 3.5rem; height: 2.6rem; border: 1px solid var(--bor
 .contador { font-size: 2.4rem; font-weight: 700; text-align: center; line-height: 1; }
 .contador small { font-size: 1rem; color: var(--texto-suave); font-weight: 500; }
 .nivel-cliente { margin: 0.2rem 0 0.8rem; font-size: 1.1rem; }
+/* Insignia del nivel junto a su nombre */
+.insignia-nivel { vertical-align: middle; margin-right: 0.3rem; }
+.insignias-niveles { display: inline-flex; gap: 0.2rem; vertical-align: middle; margin-left: 0.3rem; }
 .nivel-cliente small { font-size: 0.85rem; color: var(--texto-suave); }
 
 .qr { display: block; width: 12rem; max-width: 100%; margin: 0.5rem auto; image-rendering: pixelated; }

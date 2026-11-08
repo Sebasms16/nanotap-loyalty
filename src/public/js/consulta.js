@@ -1,6 +1,6 @@
 // RF-10: consulta de saldo sin tarjeta.
 (function () {
-  const { $, api, mensaje, aplicarMarca, circulosSellos, slugDeRuta } = window.NT;
+  const { $, api, mensaje, aplicarMarca, circulosSellos, slugDeRuta, insigniaNivel } = window.NT;
   const slug = slugDeRuta();
   $('#link-recuperar').href = `/${slug}/inscripcion`;
 
@@ -50,7 +50,7 @@
         : r.cashback ? `Veces que usó su saldo: ${r.premios_canjeados}` : `Premios canjeados: ${r.premios_canjeados}`;
       // Nivel de la temporada (si el negocio usa niveles).
       $('#nivel').hidden = !r.nivel;
-      $('#nivel').textContent = r.nivel ? r.nivel.resumen : '';
+      $('#nivel').replaceChildren(...(r.nivel ? [insigniaNivel(r.nivel.nivel.clave, 28), r.nivel.resumen] : []));
       // Fecha límite si el negocio reinicia las tarjetas por inactividad.
       $('#vigencia').hidden = !r.vigencia;
       $('#vigencia').textContent = r.vigencia || '';

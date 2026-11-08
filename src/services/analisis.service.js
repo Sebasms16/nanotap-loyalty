@@ -49,7 +49,7 @@ function clientesPorNivel(negocio, histograma, temporada) {
   return {
     fin: niveles.fechaFin(temporada),
     niveles: niveles.configuracion(negocio).map((n) => ({
-      clave: n.clave, nombre: n.nombre, emoji: n.emoji, tarjetas: n.tarjetas, unidad: n.unidad, clientes: conteo.get(n.clave),
+      clave: n.clave, nombre: n.nombre, tarjetas: n.tarjetas, unidad: n.unidad, clientes: conteo.get(n.clave),
     })),
   };
 }
