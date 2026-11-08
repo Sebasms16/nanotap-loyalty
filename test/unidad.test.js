@@ -120,6 +120,9 @@ test('el .pkpass de Apple se firma e incluye pass.json, imágenes y web service'
   for (const f of ['pass.json', 'manifest.json', 'signature', 'icon.png', 'icon@2x.png', 'strip@2x.png']) {
     assert.ok(archivos[f], `el .pkpass no contiene ${f}`);
   }
+  // La franja en la proporción en que el iPhone la muestra (375 × 144): así no la recorta.
+  assert.deepEqual([archivos['strip@2x.png'].readUInt32BE(16), archivos['strip@2x.png'].readUInt32BE(20)], [750, 288]);
+  assert.deepEqual([archivos['strip@3x.png'].readUInt32BE(16), archivos['strip@3x.png'].readUInt32BE(20)], [1125, 432]);
 
   const json = JSON.parse(archivos['pass.json'].toString('utf8'));
   assert.equal(json.serialNumber, 'serial-prueba');
@@ -758,4 +761,17 @@ test('insignias de nivel: una por nivel, en las páginas y dibujada en la franja
   const objeto = googleWallet.construirObjeto(cliente, conNiveles, estado);
   assert.match(objeto.heroImage.sourceUri.uri, /&nivel=plata/);
   assert.equal(objeto.loyaltyPoints.balance.string, 'Plata');
+});
+
+test('insignia del nivel: no toca ninguna estampa, con cualquier cantidad', () => {
+  // La insignia va de 0.988·ancho − lado hasta 0.988·ancho; lado ≤ 8,5 % del ancho.
+  for (const [ancho, alto] of [[1125, 432], [750, 246]]) {
+    const lado = Math.min(alto * 0.3, ancho * 0.085);
+    const izquierda = ancho * 0.988 - lado;
+    for (let total = 1; total <= 30; total++) {
+      const { celda, centros } = imagen.distribuirEstampas(total, ancho, alto);
+      const borde = Math.max(...centros.map((c) => c.x)) + (celda * 0.84) / 2;
+      assert.ok(borde < izquierda, `${total} estampas a ${ancho}×${alto}: ${borde} ≥ ${izquierda}`);
+    }
+  }
 });

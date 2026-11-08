@@ -83,9 +83,10 @@ function filasPara(total) {
   return 3;
 }
 
-// Parte del ancho donde van las estampas. El strip mide 375 pt, pero en la mayoría
-// de los iPhone la tarjeta se muestra más angosta (~340 pt) y iOS recorta los
-// bordes de la imagen: con un 10 % de margen por lado ninguna estampa queda cortada.
+// Parte del ancho donde van las estampas: un 10 % de margen por lado. Lo pedía el
+// recorte del iPhone cuando la franja de Apple medía 375 × 123 (ahora mide 375 × 144 y
+// no se recorta); se mantiene para que el diseño no cambie y para dejarle lugar a la
+// insignia del nivel en la esquina derecha.
 const ANCHO_UTIL = 0.8;
 
 // Tamaño de cada celda y centro de cada estampa en la tira (filas centradas).

@@ -263,6 +263,7 @@ fieldset.campo .ayuda { margin: 0; }
 .nota-previa { font-size: 0.8rem; margin: 0; }
 
 .tira-previa { display: block; width: 100%; aspect-ratio: 375 / 123; object-fit: cover; }
+.wallet-ios .tira-previa { aspect-ratio: 375 / 144; } /* como la muestra el iPhone */
 .qr-previa { display: grid; justify-items: center; padding: 0.9rem; }
 .qr-previa img { width: 6.5rem; height: 6.5rem; background: #fff; padding: 0.35rem; border-radius: 6px; image-rendering: pixelated; }
 

@@ -107,14 +107,14 @@ function png(clave, lado) {
   return pngs.get(llave);
 }
 
-// La franja con la insignia del nivel en la esquina superior derecha, dentro del margen
-// que dejan las estampas a los lados.
+// La franja con la insignia del nivel en la esquina superior derecha, en el margen que
+// dejan las estampas a la derecha (ocupan del 10 % al 90 % del ancho): no se tocan.
 async function enFranja(tira, clave) {
   if (!PALETAS[clave]) return tira;
   const { width: ancho, height: alto } = await sharp(tira).metadata();
-  const lado = Math.round(alto * 0.3);
+  const lado = Math.round(Math.min(alto * 0.3, ancho * 0.085));
   return sharp(tira)
-    .composite([{ input: await png(clave, lado), left: Math.round(ancho * 0.935 - lado / 2), top: Math.round(alto * 0.06) }])
+    .composite([{ input: await png(clave, lado), left: Math.round(ancho * 0.988 - lado), top: Math.round(alto * 0.06) }])
     .png().toBuffer();
 }
 

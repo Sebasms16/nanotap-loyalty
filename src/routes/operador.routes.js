@@ -152,7 +152,8 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
   const sorpresa = Number.parseInt(req.query.sorpresa, 10) || null;
   // ?nivel=bronce: con niveles activos, la insignia en la esquina.
   const nivel = insignias.CLAVES.includes(req.query.nivel) ? req.query.nivel : null;
-  const png = await marca.tiraDelNegocio(negocio, llenos, { sorpresa, nivel });
+  // En la proporción del iPhone (375 × 144), que es la tarjeta que se ve primero en el panel.
+  const png = await marca.tiraDelNegocio(negocio, llenos, { sorpresa, nivel, ancho: 750, alto: 288 });
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(png);
 });
 

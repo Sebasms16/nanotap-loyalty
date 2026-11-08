@@ -49,7 +49,9 @@ async function generarPass({ cliente, negocio, pass }) {
   // Con puntos o cashback, la franja depende del saldo; con estampas, de las estampas.
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
     marca.tiraDelNegocio(negocio, conPuntos || conCashback ? saldo : sellos, {
-      ancho: 375 * escala, alto: 123 * escala, sorpresa: cliente.sorpresa_estampa, nivel: estado?.nivel.clave,
+      // 375 × 144: el tamaño en que el iPhone muestra la franja de una storeCard. Con 123 de alto
+      // la agrandaba y le recortaba ~7 % de cada lado (se cortaban la insignia del nivel y las estampas).
+      ancho: 375 * escala, alto: 144 * escala, sorpresa: cliente.sorpresa_estampa, nivel: estado?.nivel.clave,
     })));
   const archivos = {
     'strip.png': tiras[0],
