@@ -352,3 +352,20 @@ test('premios sorpresa: al azar, nunca al completar, uno por tarjeta, tope al me
   const tercero = await nuevo('33330003');
   for (let i = 0; i < 4; i++) assert.equal((await sello(tercero)).sorpresa, null);
 });
+
+test('estampa sorpresa: se recuerda la posición y se borra al canjear', async () => {
+  await db.query('select setseed(0.1)');
+  const n = (await db.query(
+    `insert into negocios (nombre, slug, sellos_para_premio, sorpresas_activas, sorpresas_probabilidad, sorpresas_premios)
+     values ('Pos', 'pos', 30, true, 50, '["Regalo"]') returning id`)).rows[0].id;
+  const c = (await db.query(
+    `insert into clientes (negocio_id, nombre, telefono, correo, codigo_qr) values ($1, 'P', '44440001', 'p@example.com', 'POS-1') returning id`,
+    [n])).rows[0].id;
+  let sorpresa = null;
+  for (let i = 0; i < 20 && !sorpresa; i++) sorpresa = (await db.query('select sumar_sello($1, $2, null) r', [c, n])).rows[0].r.sorpresa;
+  assert.ok(sorpresa, 'con 50 % y 20 estampas salió');
+  assert.equal((await db.query('select sorpresa_estampa from clientes where id = $1', [c])).rows[0].sorpresa_estampa, sorpresa.estampa);
+  await db.query('update clientes set sellos_actuales = 30 where id = $1', [c]);
+  await db.query('select canjear_premio($1, $2, null)', [c, n]);
+  assert.equal((await db.query('select sorpresa_estampa from clientes where id = $1', [c])).rows[0].sorpresa_estampa, null);
+});

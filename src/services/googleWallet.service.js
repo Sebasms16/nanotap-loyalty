@@ -168,7 +168,9 @@ function construirObjeto(cliente, negocio, estado = null) {
   // La imagen de estampas se genera en /img/negocios/... con el logo del negocio.
   // `v` cambia si cambia la marca, para que Google no use una versión vieja de su caché.
   const tira = `${env.baseUrl}/img/negocios/${negocio.id}/estampas.png`
-    + `?llenos=${Math.min(sellos, meta)}&v=${marca.versionTira(negocio)}`;
+    + `?llenos=${Math.min(sellos, meta)}&v=${marca.versionTira(negocio)}`
+    // La estampa en la que ganó un premio sorpresa, si el negocio tiene imagen para ella.
+    + (cliente.sorpresa_estampa && negocio.sorpresa_estampa_url ? `&sorpresa=${cliente.sorpresa_estampa}` : '');
 
   return {
     id: idObjeto(cliente.id),

@@ -290,6 +290,18 @@
                   <textarea id="n-sorpresas-premios" rows="4" placeholder="Café gratis&#10;Postre gratis&#10;10 % de descuento"></textarea>
                   <p class="ayuda">Cada vez sale uno de la lista, al azar. Si quiere que uno salga más seguido, escríbalo dos veces.</p>
                 </div>
+                <div class="campo">
+                  <label for="n-sorpresa">Imagen de la estampa sorpresa <span class="opcional">(opcional; si no, la estampa normal)</span></label>
+                  <p class="ayuda">La estampa en la que salió el premio se ve con esta imagen en la tarjeta del cliente (por ejemplo, un
+                    regalo), hasta que complete la tarjeta. Mismas medidas que la estampa: cuadrada, de <strong>300 × 300 px</strong> o
+                    más, en PNG con fondo transparente.</p>
+                  <div class="subida">
+                    <img id="n-sorpresa-actual" class="miniatura" alt="Estampa sorpresa actual" hidden>
+                    <input id="n-sorpresa" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+                  </div>
+                  <label class="casilla" id="n-sorpresa-quitar-fila" hidden><input id="n-sorpresa-quitar" type="checkbox"> Quitar y usar la estampa normal</label>
+                  <p class="aviso-imagen" id="n-sorpresa-aviso" hidden></p>
+                </div>
                 <div class="fila">
                   <div class="campo">
                     <label for="n-sorpresas-probabilidad">Probabilidad por estampa (%)</label>

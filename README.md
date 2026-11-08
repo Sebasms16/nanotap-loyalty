@@ -181,7 +181,9 @@ Staff escanea QR ──► POST /api/clientes/:id/sello ──► sumar_sello() 
   que completa la tarjeta y máximo una por tarjeta (desde el último canje o reinicio). Lo ganado queda en
   `premios_sorpresa` y en `clientes.sorpresa_pendiente` (para las tarjetas) hasta que el staff lo entrega
   (`POST /api/clientes/:id/sorpresas/:sorpresa/entregar` → `entregar_sorpresa`). El iPhone avisa con el changeMessage
-  del campo del reverso; Google lo muestra en el detalle. Migración: `src/db/migraciones/2026-11-07-premios-sorpresa.sql`.
+  del campo del reverso; Google lo muestra en el detalle. Si el negocio sube `sorpresa_estampa_url`, la estampa en la que
+  salió (`clientes.sorpresa_estampa`, se borra al canjear o reiniciar) se dibuja con esa imagen (`?sorpresa=N` en la
+  imagen de Google). Migración: `src/db/migraciones/2026-11-07-premios-sorpresa.sql`.
 - **Tarjeta ya existente (seguridad):** si alguien se inscribe con un teléfono que ya tiene tarjeta en ese negocio, la
   página NO muestra la tarjeta (quien sepa el número podría usarla). Se envía con Resend (`RESEND_API_KEY`,
   `CORREO_REMITENTE`) un enlace al correo de la inscripción: `/{slug}/inscripcion#t=TOKEN`, válido 24 horas. El token

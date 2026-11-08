@@ -70,7 +70,8 @@ create table if not exists negocios (
   sorpresas_activas boolean not null default false,
   sorpresas_probabilidad numeric(4, 1) not null default 5 check (sorpresas_probabilidad between 0.5 and 50),
   sorpresas_premios jsonb not null default '[]',
-  sorpresas_tope_mes integer check (sorpresas_tope_mes > 0)
+  sorpresas_tope_mes integer check (sorpresas_tope_mes > 0),
+  sorpresa_estampa_url text -- imagen de la estampa en la que salió la sorpresa (null = la normal)
 );
 -- Para bases creadas antes de que existieran estas columnas:
 alter table negocios add column if not exists sello_url text;
@@ -124,6 +125,7 @@ alter table negocios add column if not exists sorpresas_probabilidad numeric(4, 
   check (sorpresas_probabilidad between 0.5 and 50);
 alter table negocios add column if not exists sorpresas_premios jsonb not null default '[]';
 alter table negocios add column if not exists sorpresas_tope_mes integer check (sorpresas_tope_mes > 0);
+alter table negocios add column if not exists sorpresa_estampa_url text;
 
 -- =========================================================
 -- STAFF (usuarios del negocio que suman sellos)
@@ -164,10 +166,12 @@ create table if not exists clientes (
   ultima_actividad timestamptz not null default now(), -- último sello o canje (o la inscripción)
   puntos integer not null default 0 check (puntos >= 0), -- saldo, en negocios con programa de puntos
   sorpresa_pendiente text, -- el premio sorpresa más reciente sin entregar (copia de premios_sorpresa, para las tarjetas)
+  sorpresa_estampa integer, -- en qué estampa de la tarjeta actual salió la sorpresa (se dibuja con su imagen)
   unique (negocio_id, telefono)
 );
 alter table clientes add column if not exists puntos integer not null default 0 check (puntos >= 0);
 alter table clientes add column if not exists sorpresa_pendiente text;
+alter table clientes add column if not exists sorpresa_estampa integer;
 
 -- =========================================================
 -- EVENTOS DE SELLOS Y CANJES (auditoría completa)
@@ -303,7 +307,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
        n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
        n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo, n.cashback_texto_franja,
-       n.sorpresas_activas, n.sorpresas_probabilidad, n.sorpresas_premios, n.sorpresas_tope_mes
+       n.sorpresas_activas, n.sorpresas_probabilidad, n.sorpresas_premios, n.sorpresas_tope_mes,
+       n.sorpresa_estampa_url
 from negocios n;
 
 -- =========================================================
@@ -361,7 +366,7 @@ begin
         insert into premios_sorpresa (negocio_id, cliente_id, premio, estampa)
         values (p_negocio_id, p_cliente_id, v_premio, v_sellos)
         returning id into v_sorpresa_id;
-        update clientes set sorpresa_pendiente = v_premio where id = p_cliente_id;
+        update clientes set sorpresa_pendiente = v_premio, sorpresa_estampa = v_sellos where id = p_cliente_id;
         v_sorpresa := json_build_object('id', v_sorpresa_id, 'premio', v_premio, 'estampa', v_sellos);
       end if;
     end if;
@@ -442,6 +447,7 @@ begin
 
   update clientes
      set sellos_actuales = sellos_actuales - v_meta,
+         sorpresa_estampa = null, -- tarjeta nueva: la estampa sorpresa era de la anterior
          premios_canjeados = premios_canjeados + 1,
          ultima_actividad = now()
    where id = p_cliente_id
@@ -683,7 +689,7 @@ declare
 begin
   with reiniciados as (
     update clientes c
-       set sellos_actuales = 0, puntos = 0
+       set sellos_actuales = 0, puntos = 0, sorpresa_estampa = null
       from negocios n
      where n.id = c.negocio_id
        and n.activo

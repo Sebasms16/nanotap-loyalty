@@ -7,7 +7,9 @@ alter table negocios add column if not exists sorpresas_probabilidad numeric(4, 
   check (sorpresas_probabilidad between 0.5 and 50);
 alter table negocios add column if not exists sorpresas_premios jsonb not null default '[]';
 alter table negocios add column if not exists sorpresas_tope_mes integer check (sorpresas_tope_mes > 0);
+alter table negocios add column if not exists sorpresa_estampa_url text;
 alter table clientes add column if not exists sorpresa_pendiente text;
+alter table clientes add column if not exists sorpresa_estampa integer;
 
 -- Premios sorpresa que salieron al sumar una estampa (sumar_sello) y su entrega.
 create table if not exists premios_sorpresa (
@@ -35,7 +37,8 @@ select n.id, n.nombre, n.slug, n.logo_url, n.color_primario, n.color_secundario,
        n.inactividad_meses, n.fondo_estampas_url, n.fondo_estampas_efecto, n.suscripcion_plan, n.suscripcion_inicio,
        n.estampa_final_url, n.tipo_programa, n.colones_por_punto, n.premios_puntos, n.puntos_factura_obligatoria,
        n.puntos_tope_compra, n.puntos_espera_minutos, n.cashback_porcentaje, n.cashback_minimo, n.cashback_texto_franja,
-       n.sorpresas_activas, n.sorpresas_probabilidad, n.sorpresas_premios, n.sorpresas_tope_mes
+       n.sorpresas_activas, n.sorpresas_probabilidad, n.sorpresas_premios, n.sorpresas_tope_mes,
+       n.sorpresa_estampa_url
 from negocios n;
 
 create or replace function sumar_sello(p_cliente_id uuid, p_negocio_id uuid, p_staff_id uuid)
@@ -88,7 +91,7 @@ begin
         insert into premios_sorpresa (negocio_id, cliente_id, premio, estampa)
         values (p_negocio_id, p_cliente_id, v_premio, v_sellos)
         returning id into v_sorpresa_id;
-        update clientes set sorpresa_pendiente = v_premio where id = p_cliente_id;
+        update clientes set sorpresa_pendiente = v_premio, sorpresa_estampa = v_sellos where id = p_cliente_id;
         v_sorpresa := json_build_object('id', v_sorpresa_id, 'premio', v_premio, 'estampa', v_sellos);
       end if;
     end if;
@@ -103,6 +106,88 @@ begin
     'premio_disponible', v_sellos >= v_meta,
     'sorpresa', v_sorpresa
   );
+end;
+$$;
+
+create or replace function canjear_premio(p_cliente_id uuid, p_negocio_id uuid, p_staff_id uuid)
+returns json
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_negocio_id uuid;
+  v_activo boolean;
+  v_meta integer;
+  v_sellos integer;
+  v_premios integer;
+  v_tipo text;
+begin
+  select c.negocio_id, n.activo, n.sellos_para_premio, c.sellos_actuales, n.tipo_programa
+    into v_negocio_id, v_activo, v_meta, v_sellos, v_tipo
+    from clientes c join negocios n on n.id = c.negocio_id
+   where c.id = p_cliente_id
+     for update of c;
+
+  if not found then raise exception 'cliente_no_encontrado'; end if;
+  if v_negocio_id <> p_negocio_id then raise exception 'cliente_de_otro_negocio'; end if;
+  if not v_activo then raise exception 'negocio_inactivo'; end if;
+  if v_tipo <> 'estampas' then raise exception 'programa_de_puntos'; end if; -- puntos o cashback
+  if v_sellos < v_meta then raise exception 'sellos_insuficientes'; end if;
+
+  update clientes
+     set sellos_actuales = sellos_actuales - v_meta,
+         sorpresa_estampa = null, -- tarjeta nueva: la estampa sorpresa era de la anterior
+         premios_canjeados = premios_canjeados + 1,
+         ultima_actividad = now()
+   where id = p_cliente_id
+   returning sellos_actuales, premios_canjeados into v_sellos, v_premios;
+
+  insert into sellos_eventos (cliente_id, staff_id, tipo) values (p_cliente_id, p_staff_id, 'canje');
+  update wallet_passes set ultima_actualizacion = now() where cliente_id = p_cliente_id;
+
+  return json_build_object(
+    'sellos_actuales', v_sellos,
+    'premios_canjeados', v_premios,
+    'sellos_para_premio', v_meta,
+    'premio_disponible', v_sellos >= v_meta
+  );
+end;
+$$;
+
+create or replace function reiniciar_inactivos()
+returns integer
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_total integer;
+begin
+  with reiniciados as (
+    update clientes c
+       set sellos_actuales = 0, puntos = 0, sorpresa_estampa = null
+      from negocios n
+     where n.id = c.negocio_id
+       and n.activo
+       and n.inactividad_meses is not null
+       and (c.sellos_actuales > 0 or c.puntos > 0)
+       and c.ultima_actividad < now() - make_interval(months => n.inactividad_meses)
+    returning c.id
+  ),
+  eventos as (
+    insert into sellos_eventos (cliente_id, tipo) select id, 'reinicio' from reiniciados
+  ),
+  passes as (
+    update wallet_passes wp set ultima_actualizacion = now()
+     where wp.cliente_id in (select id from reiniciados)
+    returning wp.cliente_id, wp.plataforma
+  ),
+  cola as (
+    insert into wallet_sync_pendientes (cliente_id, plataforma)
+    select cliente_id, plataforma from passes
+    on conflict (cliente_id, plataforma) do update set proximo_intento = now(), intentos = 0
+  )
+  select count(*) into v_total from reiniciados;
+  return v_total;
 end;
 $$;
 

@@ -121,7 +121,7 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
   };
   if (v.esUuid(req.query.negocio_id)) {
     const { data, error } = await supabase
-      .from('negocios').select('logo_url, sello_url, estampas_urls, estampa_final_url, fondo_estampas_url').eq('id', req.query.negocio_id).maybeSingle();
+      .from('negocios').select('logo_url, sello_url, estampas_urls, estampa_final_url, fondo_estampas_url, sorpresa_estampa_url').eq('id', req.query.negocio_id).maybeSingle();
     if (error) throw errorDb(error, 'leer imágenes para vista previa');
     if (data) Object.assign(negocio, { ...data, estampas_urls: [...(data.estampas_urls || [])] });
   }
@@ -131,6 +131,7 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
     if (nombre === 'logo' || nombre === 'sello') negocio[`${nombre}_url`] = valor;
     else if (nombre === 'fondo') negocio.fondo_estampas_url = valor;
     else if (nombre === 'final') negocio.estampa_final_url = valor;
+    else if (nombre === 'sorpresa') negocio.sorpresa_estampa_url = valor;
     else if (/^\d+$/.test(nombre) && nombre >= 1 && nombre <= 30) negocio.estampas_urls[nombre - 1] = valor;
   };
   for (const nombre of String(req.query.quitar || '').split(',')) poner(nombre, null);
@@ -146,7 +147,9 @@ router.post('/vista-previa/estampas', requiereOperador, express.raw({ type: 'app
 
   const pedido = Math.max(0, Number.parseInt(req.query.llenos, 10) || 0);
   const llenos = negocio.tipo_programa !== 'estampas' ? Math.min(pedido, 100000000) : Math.min(total, pedido);
-  const png = await marca.tiraDelNegocio(negocio, llenos);
+  // ?sorpresa=N: muestra la estampa N con la imagen de la estampa sorpresa.
+  const sorpresa = Number.parseInt(req.query.sorpresa, 10) || null;
+  const png = await marca.tiraDelNegocio(negocio, llenos, { sorpresa });
   res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(png);
 });
 

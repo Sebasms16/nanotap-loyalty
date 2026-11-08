@@ -105,6 +105,7 @@ function datosNegocio(cuerpo, { parcial }) {
   // Las imágenes se suben con POST /:id/imagenes/:tipo; aquí solo se pueden quitar.
   if (cuerpo.sello_url === null) d.sello_url = null;
   if (cuerpo.estampa_final_url === null) d.estampa_final_url = null;
+  if (cuerpo.sorpresa_estampa_url === null) d.sorpresa_estampa_url = null;
   if (cuerpo.estampas_pendientes !== undefined) {
     if (!['gris', 'ocultas'].includes(cuerpo.estampas_pendientes)) {
       throw new HttpError(400, 'Las estampas pendientes deben verse "gris" u "ocultas".');
@@ -245,7 +246,7 @@ router.patch('/:id', requiereOperador, async (req, res) => {
     'niveles_activos', 'niveles', 'temporada_meses', 'temporada_inicio', 'inactividad_meses',
     'fondo_estampas_url', 'fondo_estampas_efecto', 'tipo_programa', 'colones_por_punto', 'premios_puntos',
     'puntos_factura_obligatoria', 'cashback_porcentaje', 'cashback_minimo', 'cashback_texto_franja',
-    'sorpresas_activas', 'sorpresas_premios'].some((k) => k in datos);
+    'sorpresas_activas', 'sorpresas_premios', 'sorpresa_estampa_url'].some((k) => k in datos);
   const tarjetasEnCola = afectaTarjeta ? await refrescarTarjetas(data.id) : 0;
   log.info('negocio editado', { negocio_id: data.id, operacion: 'editar_negocio', campos: Object.keys(datos), tarjetasEnCola });
   res.json({ negocio: data, tarjetas_en_cola: tarjetasEnCola });

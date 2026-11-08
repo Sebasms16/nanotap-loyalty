@@ -48,7 +48,9 @@ async function generarPass({ cliente, negocio, pass }) {
 
   // Con puntos o cashback, la franja depende del saldo; con estampas, de las estampas.
   const tiras = await Promise.all([1, 2, 3].map((escala) =>
-    marca.tiraDelNegocio(negocio, conPuntos || conCashback ? saldo : sellos, { ancho: 375 * escala, alto: 123 * escala })));
+    marca.tiraDelNegocio(negocio, conPuntos || conCashback ? saldo : sellos, {
+      ancho: 375 * escala, alto: 123 * escala, sorpresa: cliente.sorpresa_estampa,
+    })));
   const archivos = {
     'strip.png': tiras[0],
     'strip@2x.png': tiras[1],

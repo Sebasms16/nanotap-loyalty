@@ -14,7 +14,8 @@ const { errorDb } = require('../utils/errores');
 
 const BUCKET = 'marcas';
 // final: la imagen de la última estampa (la del premio), distinta de las demás.
-const TIPOS = { logo: 'logo_url', sello: 'sello_url', final: 'estampa_final_url', fondo: 'fondo_estampas_url' };
+const TIPOS = { logo: 'logo_url', sello: 'sello_url', final: 'estampa_final_url', fondo: 'fondo_estampas_url',
+  sorpresa: 'sorpresa_estampa_url' }; // la estampa en la que salió un premio sorpresa
 let bucketListo = false;
 
 async function asegurarBucket() {
@@ -127,6 +128,7 @@ function versionTira(negocio) {
       // Solo si hay foto o última estampa propia: así no cambia la versión (ni se re-descarga nada) en los demás.
       ...(negocio.fondo_estampas_url ? [negocio.fondo_estampas_url, negocio.fondo_estampas_efecto] : []),
       ...(negocio.estampa_final_url ? [`final:${negocio.estampa_final_url}`] : []),
+      ...(negocio.sorpresa_estampa_url ? [`sorpresa:${negocio.sorpresa_estampa_url}`] : []),
       // Con puntos, la barra depende del catálogo (las marcas de cada premio).
       ...(puntos.esPuntos(negocio) ? [`puntos:${puntos.catalogo(negocio).map((p) => p.puntos).join(',')}`] : []),
       // Con cashback, la franja lleva el porcentaje escrito.
@@ -140,14 +142,15 @@ function versionLogo(negocio) {
     .digest('hex').slice(0, 10);
 }
 
-// Imagen de cada posición: la propia, o (en la última) la de la última estampa,
-// o la general (estampa o logo), o null.
+// Imagen de cada posición: la de la estampa sorpresa (en la posición `sorpresa`, donde
+// este cliente ganó un premio sorpresa), la propia, o (en la última) la de la última
+// estampa, o la general (estampa o logo), o null.
 // Las URLs repetidas se descargan una sola vez y comparten el mismo Buffer.
-async function imagenesDeEstampas(negocio) {
+async function imagenesDeEstampas(negocio, sorpresa = null) {
   const contexto = { negocio_id: negocio.id };
   const propias = estampasPropias(negocio);
   const total = negocio.sellos_para_premio;
-  const urls = Array.from({ length: total }, (_, i) => propias[i]
+  const urls = Array.from({ length: total }, (_, i) => (i === sorpresa - 1 && negocio.sorpresa_estampa_url) || propias[i]
     || (i === total - 1 && negocio.estampa_final_url) || negocio.sello_url || negocio.logo_url || null);
   const descargas = new Map([...new Set(urls)].map((url) => [url, cargarImagen(url, contexto)]));
   return Promise.all(urls.map((url) => descargas.get(url)));
@@ -180,7 +183,9 @@ async function fondoDelNegocio(negocio, { ancho, alto }) {
 // Zona de estampas del negocio. Con imágenes: cada estampa con la suya (color /
 // gris o círculo vacío). Sin ninguna imagen: círculos con los colores del negocio.
 // Con foto de fondo, las estampas van sobre la foto en vez del color.
-async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {}) {
+// sorpresa: la estampa (1 = la primera) en la que el cliente ganó un premio sorpresa en
+// esta tarjeta; se dibuja con la imagen de la estampa sorpresa, si el negocio subió una.
+async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246, sorpresa = null } = {}) {
   // Programa de puntos: `llenos` es el saldo y la franja es una barra de avance.
   if (puntos.esPuntos(negocio)) {
     const base = await fondoDelNegocio(negocio, { ancho, alto });
@@ -204,7 +209,11 @@ async function tiraDelNegocio(negocio, llenos, { ancho = 750, alto = 246 } = {})
   const obtenidas = Math.min(Math.max(llenos, 0), total);
   const fondo = fondoSellos(negocio);
   const sello = negocio.color_secundario || '#ffffff';
-  const [imagenes, base] = await Promise.all([imagenesDeEstampas(negocio), fondoDelNegocio(negocio, { ancho, alto })]);
+  // Solo una estampa ya obtenida puede ser la sorpresa.
+  const posicionSorpresa = Number.isInteger(sorpresa) && sorpresa >= 1 && sorpresa <= obtenidas ? sorpresa : null;
+  const [imagenes, base] = await Promise.all([
+    imagenesDeEstampas(negocio, posicionSorpresa), fondoDelNegocio(negocio, { ancho, alto }),
+  ]);
   if (imagenes.some(Boolean) || base) {
     try {
       return await estampas.tiraConImagenes({

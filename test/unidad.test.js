@@ -712,3 +712,21 @@ test('premios sorpresa: lista del operador, reglas y tarjetas de Apple y Google'
   const objeto = googleWallet.construirObjeto(conSorpresa, neg);
   assert.match(objeto.textModulesData[0].body, /^Café gratis\. Pídalo en caja/);
 });
+
+test('estampa sorpresa: la posición donde salió se dibuja con su imagen', async () => {
+  const sharp = require('sharp');
+  const marca = require('../src/services/marca.service');
+  const cuadro = (r, g, b) => sharp({ create: { width: 60, height: 60, channels: 4, background: { r, g, b, alpha: 1 } } }).png().toBuffer();
+  // Estampa normal azul y estampa sorpresa roja (Buffers, como en la vista previa del panel).
+  const neg = { ...negocio, sellos_para_premio: 5, color_fondo_sellos: '#000000', sello_url: await cuadro(0, 0, 255),
+    sorpresa_estampa_url: await cuadro(255, 0, 0), estampas_urls: [] };
+  const rojo = async (png) => (await sharp(png).stats()).channels[0].max;
+  assert.ok(await rojo(await marca.tiraDelNegocio(neg, 3, { sorpresa: 2 })) > 200, 'la 2.ª estampa va en rojo');
+  assert.ok(await rojo(await marca.tiraDelNegocio(neg, 3)) < 50, 'sin sorpresa, todas azules');
+  assert.ok(await rojo(await marca.tiraDelNegocio(neg, 1, { sorpresa: 4 })) < 50, 'una estampa no obtenida no es sorpresa');
+
+  const urlNeg = { ...negocio, sorpresa_estampa_url: 'https://x.test/regalo.png' };
+  assert.match(googleWallet.construirObjeto({ ...cliente, sorpresa_estampa: 3 }, urlNeg).heroImage.sourceUri.uri, /&sorpresa=3$/);
+  assert.doesNotMatch(googleWallet.construirObjeto({ ...cliente, sorpresa_estampa: 3 }, negocio).heroImage.sourceUri.uri, /sorpresa/);
+  assert.notEqual(marca.versionTira(urlNeg), marca.versionTira(negocio));
+});

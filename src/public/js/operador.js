@@ -213,6 +213,11 @@
     $('#n-sorpresas-premios').value = (Array.isArray(n?.sorpresas_premios) ? n.sorpresas_premios : []).join('\n');
     $('#n-sorpresas-probabilidad').value = n?.sorpresas_probabilidad ?? 5;
     $('#n-sorpresas-tope').value = n?.sorpresas_tope_mes ?? '';
+    $('#n-sorpresa').value = '';
+    $('#n-sorpresa-quitar').checked = false;
+    mostrarMiniatura('#n-sorpresa-actual', n?.sorpresa_estampa_url);
+    $('#n-sorpresa-quitar-fila').hidden = !n?.sorpresa_estampa_url;
+    $('#n-sorpresa-aviso').hidden = true;
     mostrarSorpresas();
     $('#n-colones-punto').value = n?.colones_por_punto || 1000;
     $('#n-catalogo').replaceChildren(...(Array.isArray(n?.premios_puntos) ? n.premios_puntos : []).map(filaCatalogo));
@@ -540,7 +545,15 @@
     const pct = Number($('#n-sorpresas-probabilidad').value) || 5;
     $('#n-sorpresas-regla').textContent = `Más o menos 1 de cada ${Math.max(2, Math.round(100 / pct))} estampas.`;
   }
-  $('#n-sorpresas-activas').addEventListener('change', mostrarSorpresas);
+  $('#n-sorpresas-activas').addEventListener('change', () => { mostrarSorpresas(); actualizarVistaPrevia(); });
+  $('#n-sorpresa').addEventListener('change', () => { revisarImagen('sorpresa'); actualizarVistaPrevia(); });
+  $('#n-sorpresa-quitar').addEventListener('change', actualizarVistaPrevia);
+  // En la vista previa, la 2.ª estampa (o la 1.ª) se ve como la estampa sorpresa, si hay imagen para ella.
+  function posicionSorpresaPrevia(llenos) {
+    const conImagen = $('#n-sorpresa').files[0] || (editando?.sorpresa_estampa_url && !$('#n-sorpresa-quitar').checked);
+    if (tipoPrograma() !== 'estampas' || !$('#n-sorpresas-activas').checked || !conImagen || llenos < 1) return '';
+    return Math.min(2, llenos);
+  }
   $('#n-sorpresas-probabilidad').addEventListener('input', mostrarSorpresas);
 
   // Con otro programa no se mandan: la configuración queda guardada por si vuelve a estampas.
@@ -725,7 +738,7 @@
   }
 
   // --- Medidas recomendadas: avisa (sin bloquear) si la imagen no es ideal ---
-  const MEDIDAS = { logo: 660, sello: 300, final: 300 };
+  const MEDIDAS = { logo: 660, sello: 300, final: 300, sorpresa: 300 };
   async function revisarImagen(tipo) {
     const archivo = $(`#n-${tipo}`).files[0];
     const aviso = $(`#n-${tipo}-aviso`);
@@ -947,11 +960,12 @@
     const { nuevas, quitadas } = cambiosEstampas();
     const final = cambiosFinal();
     const archivos = [['logo', $('#n-logo').files[0]], ['sello', $('#n-sello').files[0]], ['fondo', $('#n-fondo-foto').files[0]],
-      ['final', final.archivo], ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
+      ['final', final.archivo], ['sorpresa', $('#n-sorpresa').files[0]], ...nuevas.map(([posicion, { archivo }]) => [posicion, archivo])].filter(([, archivo]) => archivo);
     const quitar = [...quitadas];
     if ($('#n-sello-quitar').checked) quitar.push('sello');
     if (final.quitar) quitar.push('final');
     if ($('#n-fondo-quitar').checked) quitar.push('fondo');
+    if ($('#n-sorpresa-quitar').checked) quitar.push('sorpresa');
 
     const numero = ++pedidoTira;
     const partes = await Promise.all(archivos.map(async ([nombre, archivo]) => [nombre,
@@ -966,6 +980,7 @@
       metas: tipoPrograma() === 'puntos' ? catalogoActual().map((p) => p.puntos).join(',') : '',
       porcentaje: tipoPrograma() === 'cashback' ? porcentajeCashback() : '',
       texto: tipoPrograma() === 'cashback' && !textoEnFranja() ? '0' : '',
+      sorpresa: posicionSorpresaPrevia(llenos),
       quitar: quitar.join(','),
       partes: partes.map(([nombre, png]) => `${nombre}:${png.size}`).join(','),
     });
@@ -1014,6 +1029,7 @@
       fondo_estampas_efecto: $('#n-fondo-efecto').value,
     };
     if ($('#n-sello-quitar').checked) cuerpo.sello_url = null;
+    if ($('#n-sorpresa-quitar').checked && !$('#n-sorpresa').files[0]) cuerpo.sorpresa_estampa_url = null;
     const final = cambiosFinal();
     if (final.quitar) cuerpo.estampa_final_url = null;
     const fondo = $('#n-fondo-foto').files[0];
@@ -1030,6 +1046,7 @@
       if (logo) negocio = await subirImagen(negocio.id, 'logo', logo);
       if (sello) negocio = await subirImagen(negocio.id, 'sello', sello);
       if (final.archivo) negocio = await subirImagen(negocio.id, 'final', final.archivo);
+      if ($('#n-sorpresa').files[0]) negocio = await subirImagen(negocio.id, 'sorpresa', $('#n-sorpresa').files[0]);
       if (fondo) negocio = await subirImagen(negocio.id, 'fondo', fondo);
       negocio = await guardarEstampas(negocio);
       toast(editando ? 'Guardado. Las tarjetas se actualizan en unos minutos.' : `Negocio creado. Inscripción: ${r.url_inscripcion}`, 'exito');
