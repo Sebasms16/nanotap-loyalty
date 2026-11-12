@@ -749,10 +749,9 @@ test('insignias de nivel: una por nivel, en las páginas y dibujada en la franja
   const neg = { ...negocio, color_fondo_sellos: '#000000' };
   const sin = await marca.tiraDelNegocio(neg, 2);
   const con = await marca.tiraDelNegocio(neg, 2, { nivel: 'oro' });
-  const esquina = (png) => sharp(png).extract({ left: 680, top: 20, width: 40, height: 50 }).ensureAlpha().raw().toBuffer();
-  assert.ok(!(await esquina(sin)).equals(await esquina(con)), 'la insignia va en la esquina superior derecha');
-  const abajo = (png) => sharp(png).extract({ left: 0, top: 150, width: 750, height: 96 }).ensureAlpha().raw().toBuffer();
-  assert.ok((await abajo(sin)).equals(await abajo(con)), 'el resto de la franja no cambia');
+  // La insignia va centrada en la columna derecha (a 750 × 246: lado 98 px, centro en x = 675).
+  const centro = (png) => sharp(png).extract({ left: 655, top: 103, width: 40, height: 40 }).ensureAlpha().raw().toBuffer();
+  assert.ok(!(await centro(sin)).equals(await centro(con)), 'la insignia va a la derecha');
   assert.ok(sin.equals(await marca.tiraDelNegocio(neg, 2, { nivel: 'platino' }))); // nivel desconocido: nada
 
   // Google pide la franja con el nivel del cliente, y el campo del nivel va sin emoji.
@@ -764,12 +763,13 @@ test('insignias de nivel: una por nivel, en las páginas y dibujada en la franja
 });
 
 test('insignia del nivel: no toca ninguna estampa, con cualquier cantidad', () => {
-  // La insignia va de 0.988·ancho − lado hasta 0.988·ancho; lado ≤ 8,5 % del ancho.
-  for (const [ancho, alto] of [[1125, 432], [750, 246]]) {
-    const lado = Math.min(alto * 0.3, ancho * 0.085);
-    const izquierda = ancho * 0.988 - lado;
+  const insignias = require('../src/services/insignias.service');
+  for (const [ancho, alto] of [[1125, 432], [750, 246], [375, 144]]) {
+    const { lado, left: izquierda, top } = insignias.posicion(ancho, alto, 'columna');
+    assert.ok(lado >= ancho * 0.12, 'más grande que la esquina de antes (8,5 % del ancho)');
+    assert.ok(izquierda + lado <= ancho && top >= 0 && top + lado <= alto, 'cabe completa en la franja');
     for (let total = 1; total <= 30; total++) {
-      const { celda, centros } = imagen.distribuirEstampas(total, ancho, alto);
+      const { celda, centros } = imagen.distribuirEstampas(total, ancho, alto, { conInsignia: true });
       const borde = Math.max(...centros.map((c) => c.x)) + (celda * 0.84) / 2;
       assert.ok(borde < izquierda, `${total} estampas a ${ancho}×${alto}: ${borde} ≥ ${izquierda}`);
     }

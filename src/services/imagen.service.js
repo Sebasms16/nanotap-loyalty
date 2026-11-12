@@ -85,20 +85,25 @@ function filasPara(total) {
 
 // Parte del ancho donde van las estampas: un 10 % de margen por lado. Lo pedía el
 // recorte del iPhone cuando la franja de Apple medía 375 × 123 (ahora mide 375 × 144 y
-// no se recorta); se mantiene para que el diseño no cambie y para dejarle lugar a la
-// insignia del nivel en la esquina derecha.
+// no se recorta); se mantiene para que el diseño no cambie.
 const ANCHO_UTIL = 0.8;
+// Con nivel, la insignia ocupa una columna a la derecha (insignias.enFranja): las
+// estampas van del 5 % al 82 % del ancho y quedan centradas en ese espacio.
+const AREA_CON_INSIGNIA = [0.05, 0.82];
 
 // Tamaño de cada celda y centro de cada estampa en la tira (filas centradas).
-function distribuirEstampas(total, ancho, alto) {
+function distribuirEstampas(total, ancho, alto, { conInsignia = false } = {}) {
+  const [desde, hasta] = conInsignia ? AREA_CON_INSIGNIA : [(1 - ANCHO_UTIL) / 2, (1 + ANCHO_UTIL) / 2];
+  const x0 = ancho * desde;
+  const anchoArea = ancho * (hasta - desde);
   const filas = filasPara(total);
   const columnas = Math.ceil(total / filas);
-  const celda = Math.min((ancho * ANCHO_UTIL) / columnas, (alto * 0.9) / filas);
+  const celda = Math.min(anchoArea / columnas, (alto * 0.9) / filas);
   const origenY = (alto - celda * filas) / 2;
   const centros = Array.from({ length: total }, (_, i) => {
     const fila = Math.floor(i / columnas);
     const enFila = fila === filas - 1 ? total - columnas * (filas - 1) : columnas;
-    const origenX = (ancho - celda * enFila) / 2;
+    const origenX = x0 + (anchoArea - celda * enFila) / 2;
     return { x: origenX + celda * ((i % columnas) + 0.5), y: origenY + celda * (fila + 0.5) };
   });
   return { celda, centros };
@@ -108,11 +113,11 @@ function distribuirEstampas(total, ancho, alto) {
  * Tira de sellos. Por defecto 750x246 (strip @2x de Apple para storeCard;
  * Google también la acepta como hero image).
  */
-function tiraSellos({ total, llenos, fondo, sello, ancho = 750, alto = 246 }) {
+function tiraSellos({ total, llenos, fondo, sello, ancho = 750, alto = 246, conInsignia = false }) {
   const colorFondo = hexARgb(fondo);
   const colorSello = hexARgb(sello);
   const l = lienzo(ancho, alto, colorFondo);
-  const { celda, centros } = distribuirEstampas(total, ancho, alto);
+  const { celda, centros } = distribuirEstampas(total, ancho, alto, { conInsignia });
   const radio = celda * 0.38;
 
   for (let i = 0; i < total; i++) {

@@ -94,8 +94,9 @@ async function colorPromedio(png) {
  */
 async function tiraConImagenes({
   imagenes, total, llenos, fondo, sello = '#ffffff', ocultas = false, ancho = 750, alto = 246, base = null, tarjeta = null,
+  conInsignia = false,
 }) {
-  const { celda, centros } = distribuirEstampas(total, ancho, alto);
+  const { celda, centros } = distribuirEstampas(total, ancho, alto, { conInsignia });
   const lado = Math.round(celda * 0.84);
   const hayAros = imagenes.slice(llenos, total).some((imagen) => !imagen || ocultas);
   const aro = hayAros ? colorQueSeVe(base ? await colorPromedio(base) : hexARgb(fondo), [sello, tarjeta]) : sello;
@@ -136,14 +137,17 @@ async function tiraConImagenes({
  * @param {number} puntos saldo del cliente
  * @param {number[]} metas costo de cada premio, en puntos
  */
-async function tiraPuntos({ puntos, metas, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null }) {
+async function tiraPuntos({
+  puntos, metas, fondo, sello = '#ffffff', tarjeta = null, ancho = 750, alto = 246, base = null, conInsignia = false,
+}) {
   const fondoRgb = base ? await colorPromedio(base) : hexARgb(fondo);
   const color = colorQueSeVe(fondoRgb, [sello, tarjeta]);
   const relleno = `rgb(${fondoRgb.join(',')})`;
   const tope = Math.max(1, ...metas);
-  // Mismo margen a los lados que las estampas, para que el iPhone no corte las marcas.
-  const x0 = ancho * 0.12;
-  const x1 = ancho * 0.88;
+  // Mismo margen a los lados que las estampas. Con nivel, la barra se acorta a la derecha
+  // para dejarle su columna a la insignia.
+  const x0 = ancho * (conInsignia ? 0.07 : 0.12);
+  const x1 = ancho * (conInsignia ? 0.76 : 0.88);
   const cy = alto / 2;
   const grosor = alto * 0.09;
   const radio = alto * 0.13;
