@@ -186,24 +186,20 @@ async function fondoDelNegocio(negocio, { ancho, alto }) {
 // Con foto de fondo, las estampas van sobre la foto en vez del color.
 // sorpresa: la estampa (1 = la primera) en la que el cliente ganó un premio sorpresa en
 // esta tarjeta; se dibuja con la imagen de la estampa sorpresa, si el negocio subió una.
-// nivel: la clave del nivel del cliente (bronce, plata, oro, diamante). Su insignia va en una
-// columna a la derecha (las estampas o la barra se corren a la izquierda); con cashback, en la
-// esquina, porque el texto va centrado.
+// nivel: la clave del nivel del cliente (bronce, plata, oro, diamante); su insignia va en la esquina.
 async function tiraDelNegocio(negocio, llenos, { nivel = null, ...opciones } = {}) {
-  const conInsignia = insignias.CLAVES.includes(nivel);
-  const tira = await dibujarTira(negocio, llenos, { ...opciones, conInsignia });
-  if (!conInsignia) return tira;
-  return insignias.enFranja(tira, nivel, { lugar: cashback.esCashback(negocio) ? 'esquina' : 'columna' });
+  const tira = await dibujarTira(negocio, llenos, opciones);
+  return nivel ? insignias.enFranja(tira, nivel) : tira;
 }
 
-async function dibujarTira(negocio, llenos, { ancho = 750, alto = 246, sorpresa = null, conInsignia = false } = {}) {
+async function dibujarTira(negocio, llenos, { ancho = 750, alto = 246, sorpresa = null } = {}) {
   // Programa de puntos: `llenos` es el saldo y la franja es una barra de avance.
   if (puntos.esPuntos(negocio)) {
     const base = await fondoDelNegocio(negocio, { ancho, alto });
     return estampas.tiraPuntos({
       puntos: Math.max(0, llenos), metas: puntos.catalogo(negocio).map((p) => p.puntos),
       fondo: fondoSellos(negocio), sello: negocio.color_secundario || '#ffffff', tarjeta: negocio.color_primario,
-      ancho, alto, base, conInsignia,
+      ancho, alto, base,
     });
   }
   // Cashback: no hay nada que llenar. La franja es la foto del negocio (o el color de
@@ -229,13 +225,13 @@ async function dibujarTira(negocio, llenos, { ancho = 750, alto = 246, sorpresa 
     try {
       return await estampas.tiraConImagenes({
         imagenes, total, llenos: obtenidas, fondo, sello, ocultas: negocio.estampas_pendientes === 'ocultas', ancho, alto, base,
-        tarjeta: negocio.color_primario, conInsignia,
+        tarjeta: negocio.color_primario,
       });
     } catch (error) {
       log.warn('no se pudieron usar las imágenes del negocio en las estampas', { negocio_id: negocio.id, error });
     }
   }
-  return imagen.tiraSellos({ total, llenos: obtenidas, fondo, sello, ancho, alto, conInsignia });
+  return imagen.tiraSellos({ total, llenos: obtenidas, fondo, sello, ancho, alto });
 }
 
 module.exports = {

@@ -107,24 +107,15 @@ function png(clave, lado) {
   return pngs.get(llave);
 }
 
-// Dónde va la insignia en la franja (fracciones del ancho y del alto).
-//  - columna: centrada a la derecha, en el espacio que le dejan las estampas corridas a la
-//    izquierda (imagen.distribuirEstampas con conInsignia: llegan hasta el 82 % del ancho).
-//  - esquina: arriba a la derecha y más chica, cuando la franja lleva algo centrado (cashback).
-function posicion(ancho, alto, lugar) {
-  if (lugar === 'esquina') {
-    const lado = Math.round(Math.min(alto * 0.3, ancho * 0.085));
-    return { lado, left: Math.round(ancho * 0.988 - lado), top: Math.round(alto * 0.06) };
-  }
-  const lado = Math.round(Math.min(ancho * 0.13, alto * 0.6));
-  return { lado, left: Math.round(ancho * 0.9 - lado / 2), top: Math.round((alto - lado) / 2) };
-}
-
-async function enFranja(tira, clave, { lugar = 'columna' } = {}) {
+// La franja con la insignia del nivel en la esquina superior derecha, en el margen que
+// dejan las estampas a la derecha (ocupan del 10 % al 90 % del ancho): no se tocan.
+async function enFranja(tira, clave) {
   if (!PALETAS[clave]) return tira;
   const { width: ancho, height: alto } = await sharp(tira).metadata();
-  const { lado, left, top } = posicion(ancho, alto, lugar);
-  return sharp(tira).composite([{ input: await png(clave, lado), left, top }]).png().toBuffer();
+  const lado = Math.round(Math.min(alto * 0.3, ancho * 0.085));
+  return sharp(tira)
+    .composite([{ input: await png(clave, lado), left: Math.round(ancho * 0.988 - lado), top: Math.round(alto * 0.06) }])
+    .png().toBuffer();
 }
 
-module.exports = { svg, png, enFranja, posicion, CLAVES };
+module.exports = { svg, png, enFranja, CLAVES };
